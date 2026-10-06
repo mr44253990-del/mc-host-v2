@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: mc-host
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /healthz
+    envVars:
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: MISTRAL_API_KEY
+        sync: false
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: OWNER_ID
+        sync: false

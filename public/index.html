@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#070914">
+<title>MC Host</title>
+<style>
+:root{
+  --bg:#070914; --t1:#eef1ff; --t2:#a4abd0; --t3:#6a7099;
+  --glass:rgba(255,255,255,.055); --glass2:rgba(255,255,255,.09); --line:rgba(255,255,255,.12);
+  --a1:#7c5cff; --a2:#27d3ff; --a3:#ff5cae; --ok:#35e6a0; --warn:#ffb94a; --bad:#ff5a73;
+  --r:22px; --font:'Segoe UI',system-ui,-apple-system,'Noto Sans Bengali','Hind Siliguri',sans-serif;
+  --mono:ui-monospace,'SF Mono',Menlo,Consolas,monospace;
+}
+:root[data-theme="light"]{
+  --bg:#eef0fb; --t1:#161a36; --t2:#4a5180; --t3:#7a80a8;
+  --glass:rgba(255,255,255,.62); --glass2:rgba(255,255,255,.85); --line:rgba(30,40,100,.14);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%}
+body{background:var(--bg);color:var(--t1);font-family:var(--font);font-size:14px;overflow:hidden}
+button,input,select,textarea{font:inherit;color:inherit}
+svg.i{width:1.15em;height:1.15em;stroke:currentColor;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round;flex:none}
+
+/* liquid background */
+#bg{position:fixed;inset:0;z-index:0;overflow:hidden;filter:url(#goo)}
+#bg i{position:absolute;border-radius:50%;opacity:.55;mix-blend-mode:screen;will-change:transform}
+#bg i:nth-child(1){width:46vmax;height:46vmax;left:-12vmax;top:-14vmax;background:radial-gradient(circle,var(--a1),transparent 68%);animation:f1 26s ease-in-out infinite}
+#bg i:nth-child(2){width:40vmax;height:40vmax;right:-14vmax;top:8vmax;background:radial-gradient(circle,var(--a2),transparent 68%);animation:f2 32s ease-in-out infinite}
+#bg i:nth-child(3){width:38vmax;height:38vmax;left:20vmax;bottom:-18vmax;background:radial-gradient(circle,var(--a3),transparent 68%);animation:f3 29s ease-in-out infinite}
+:root[data-theme="light"] #bg i{opacity:.4;mix-blend-mode:multiply}
+@keyframes f1{50%{transform:translate(18vmax,12vmax) scale(1.2)}}
+@keyframes f2{50%{transform:translate(-20vmax,10vmax) scale(.85)}}
+@keyframes f3{50%{transform:translate(14vmax,-16vmax) scale(1.15)}}
+#grain{position:fixed;inset:0;z-index:1;pointer-events:none;opacity:.5;background:radial-gradient(1200px 600px at 50% -10%,rgba(255,255,255,.06),transparent)}
+
+/* layout */
+#app{position:relative;z-index:2;height:100%;display:flex}
+aside{width:236px;padding:18px;display:flex;flex-direction:column;gap:6px;flex:none}
+.brand{display:flex;align-items:center;gap:12px;padding:6px 8px 18px}
+.cube{width:34px;height:34px;perspective:200px;flex:none}
+.cube div{width:100%;height:100%;position:relative;transform-style:preserve-3d;animation:spin 14s linear infinite}
+.cube b{position:absolute;inset:0;border:1.5px solid rgba(255,255,255,.7);background:linear-gradient(135deg,rgba(124,92,255,.5),rgba(39,211,255,.35));border-radius:5px}
+.cube b:nth-child(1){transform:translateZ(17px)}.cube b:nth-child(2){transform:rotateY(180deg) translateZ(17px)}
+.cube b:nth-child(3){transform:rotateY(90deg) translateZ(17px)}.cube b:nth-child(4){transform:rotateY(-90deg) translateZ(17px)}
+.cube b:nth-child(5){transform:rotateX(90deg) translateZ(17px)}.cube b:nth-child(6){transform:rotateX(-90deg) translateZ(17px)}
+@keyframes spin{from{transform:rotateX(-24deg) rotateY(0)}to{transform:rotateX(-24deg) rotateY(360deg)}}
+.brand h1{font-size:17px;margin:0;letter-spacing:.3px}.brand small{color:var(--t3);display:block;font-size:11px}
+nav{display:flex;flex-direction:column;gap:4px}
+.nv{display:flex;align-items:center;gap:12px;padding:11px 14px;border-radius:14px;color:var(--t2);cursor:pointer;border:1px solid transparent;transition:.25s;background:none;text-align:left}
+.nv:hover{background:var(--glass);color:var(--t1)}
+.nv.on{background:linear-gradient(135deg,rgba(124,92,255,.28),rgba(39,211,255,.16));border-color:var(--line);color:var(--t1);box-shadow:0 8px 30px -12px var(--a1)}
+.sp{flex:1}
+main{flex:1;min-width:0;display:flex;flex-direction:column}
+header{display:flex;align-items:center;gap:12px;padding:18px 24px 6px}
+header h2{margin:0;font-size:22px;flex:1}
+#view{flex:1;overflow:auto;padding:12px 24px 90px;scroll-behavior:smooth}
+#view::-webkit-scrollbar,.scr::-webkit-scrollbar{width:8px;height:8px}
+#view::-webkit-scrollbar-thumb,.scr::-webkit-scrollbar-thumb{background:var(--line);border-radius:8px}
+
+/* glass */
+.g{background:var(--glass);border:1px solid var(--line);border-radius:var(--r);backdrop-filter:blur(22px) saturate(160%);-webkit-backdrop-filter:blur(22px) saturate(160%);box-shadow:0 20px 50px -28px rgba(0,0,0,.7),inset 0 1px 0 rgba(255,255,255,.12);position:relative}
+.g.p{padding:18px}
+.tilt{transform-style:preserve-3d;transition:transform .2s ease-out,box-shadow .3s;will-change:transform}
+.tilt::after{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;background:radial-gradient(260px circle at var(--mx,50%) var(--my,0%),rgba(255,255,255,.14),transparent 60%);opacity:0;transition:opacity .25s}
+.tilt:hover::after{opacity:1}
+.grid{display:grid;gap:16px}
+.g4{grid-template-columns:repeat(auto-fit,minmax(190px,1fr))}
+.g3{grid-template-columns:repeat(auto-fill,minmax(300px,1fr))}
+.g2{grid-template-columns:repeat(auto-fit,minmax(340px,1fr))}
+.row{display:flex;align-items:center;gap:10px}.wrap{flex-wrap:wrap}.col{display:flex;flex-direction:column;gap:12px}
+.mut{color:var(--t2)}.dim{color:var(--t3);font-size:12px}
+.h3{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--t3);margin:0 0 12px}
+
+/* controls */
+.btn{display:inline-flex;align-items:center;gap:8px;padding:10px 16px;border-radius:14px;border:1px solid var(--line);background:var(--glass2);cursor:pointer;transition:.2s;white-space:nowrap}
+.btn:hover{transform:translateY(-1px);border-color:rgba(255,255,255,.3)}
+.btn:active{transform:scale(.97)}
+.btn.pri{background:linear-gradient(135deg,var(--a1),var(--a2));border-color:transparent;color:#fff;box-shadow:0 10px 28px -10px var(--a1)}
+.btn.ok{background:rgba(53,230,160,.16);border-color:rgba(53,230,160,.4);color:var(--ok)}
+.btn.bad{background:rgba(255,90,115,.14);border-color:rgba(255,90,115,.4);color:var(--bad)}
+.btn.sm{padding:7px 11px;border-radius:11px;font-size:13px}
+.btn[disabled]{opacity:.45;pointer-events:none}
+.in{width:100%;padding:11px 14px;border-radius:13px;border:1px solid var(--line);background:rgba(0,0,0,.18);outline:none;transition:.2s}
+:root[data-theme="light"] .in{background:rgba(255,255,255,.7)}
+.in:focus{border-color:var(--a2);box-shadow:0 0 0 3px rgba(39,211,255,.18)}
+label{display:block;font-size:12px;color:var(--t3);margin:0 0 6px}
+textarea.in{resize:vertical;font-family:var(--mono);font-size:12.5px;line-height:1.55;min-height:300px}
+.sw{width:46px;height:26px;border-radius:20px;background:var(--glass2);border:1px solid var(--line);position:relative;cursor:pointer;transition:.25s;flex:none}
+.sw::after{content:"";position:absolute;top:2px;left:2px;width:20px;height:20px;border-radius:50%;background:#fff;transition:.25s;box-shadow:0 3px 8px rgba(0,0,0,.4)}
+.sw.on{background:linear-gradient(135deg,var(--a1),var(--a2))}.sw.on::after{left:22px}
+
+/* stat tiles */
+.tile{padding:18px;overflow:hidden}
+.tile .lbl{color:var(--t3);font-size:12px;display:flex;align-items:center;gap:8px}
+.tile .val{font-size:34px;font-weight:700;margin:8px 0 2px;letter-spacing:-.5px;background:linear-gradient(135deg,var(--t1),var(--a2));-webkit-background-clip:text;background-clip:text;color:transparent}
+.tile .sub{color:var(--t3);font-size:12px}
+.tile .orb{position:absolute;right:-26px;top:-26px;width:100px;height:100px;border-radius:50%;filter:blur(24px);opacity:.5}
+
+/* pills & dots */
+.pill{display:inline-flex;align-items:center;gap:7px;padding:4px 11px;border-radius:20px;font-size:12px;border:1px solid var(--line);background:var(--glass)}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--t3);flex:none}
+.s-online .dot{background:var(--ok);box-shadow:0 0 0 0 var(--ok);animation:pulse 2s infinite}
+.s-starting .dot{background:var(--warn);animation:pulse 1s infinite;box-shadow:0 0 0 0 var(--warn)}
+.s-reconnecting .dot{background:#ff8a4a;animation:pulse 1.4s infinite;box-shadow:0 0 0 0 #ff8a4a}
+@keyframes pulse{70%{box-shadow:0 0 0 8px transparent}}
+
+/* bot card */
+.bc{padding:18px;cursor:pointer}
+.bc .nm{font-size:17px;font-weight:650}
+.bc .addr{font-family:var(--mono);font-size:12px;color:var(--t3)}
+.ring{width:62px;height:62px;flex:none;position:relative}
+.ring svg{transform:rotate(-90deg)}.ring b{position:absolute;inset:0;display:grid;place-items:center;font-size:14px}
+.chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+.chip{font-size:12px;padding:5px 10px;border-radius:10px;background:rgba(0,0,0,.2);color:var(--t2);display:flex;gap:6px;align-items:center}
+:root[data-theme="light"] .chip{background:rgba(0,0,30,.06)}
+.hot{display:grid;grid-template-columns:repeat(9,1fr);gap:5px;margin-top:14px}
+.hot i{aspect-ratio:1;border-radius:6px;border:2px solid rgba(255,255,255,.14);background:rgba(0,0,0,.28);transition:.4s}
+.hot i.on{background:linear-gradient(135deg,var(--ok),#1aa77a);box-shadow:0 0 12px -2px var(--ok)}
+.hot i.mid{background:linear-gradient(135deg,var(--warn),#c98a22)}
+.hot i.rc{background:linear-gradient(135deg,#ff8a4a,#c24f1f)}
+
+/* tables / logs */
+.term{background:#05060e;border:1px solid var(--line);border-radius:16px;padding:14px;font-family:var(--mono);font-size:12px;line-height:1.6;height:340px;overflow:auto;color:#b9c2ff;white-space:pre-wrap;word-break:break-all}
+.term .e{color:#ff8da1}.term .k{color:#7ee8c4}.term .t{color:#6a7099}
+.tl{position:relative;padding-left:22px;display:flex;flex-direction:column;gap:12px}
+.tl::before{content:"";position:absolute;left:6px;top:4px;bottom:4px;width:2px;background:linear-gradient(var(--a1),var(--a2),transparent)}
+.tl div{position:relative;font-size:13px}.tl div::before{content:"";position:absolute;left:-21px;top:4px;width:10px;height:10px;border-radius:50%;background:var(--bg);border:2px solid var(--a2)}
+.tl .off::before{border-color:var(--bad)}.tl .on::before{border-color:var(--ok)}
+.bar{height:8px;border-radius:8px;background:rgba(0,0,0,.25);overflow:hidden}.bar i{display:block;height:100%;border-radius:8px;background:linear-gradient(90deg,var(--a1),var(--a2));transition:width .6s}
+.tabs{display:flex;gap:6px;padding:5px;border-radius:16px;background:rgba(0,0,0,.18);width:max-content;max-width:100%;overflow:auto;margin-bottom:16px}
+.tab{padding:8px 16px;border-radius:12px;cursor:pointer;color:var(--t2);background:none;border:0;white-space:nowrap}
+.tab.on{background:var(--glass2);color:var(--t1);box-shadow:0 4px 14px -6px rgba(0,0,0,.6)}
+
+/* chat */
+.chat{display:flex;flex-direction:column;gap:12px;height:calc(100vh - 330px);min-height:320px;overflow:auto;padding:4px}
+.msg{max-width:84%;padding:12px 15px;border-radius:18px;line-height:1.6;white-space:pre-wrap;word-break:break-word;animation:pop .3s}
+.msg.u{align-self:flex-end;background:linear-gradient(135deg,var(--a1),#5a45d6);color:#fff;border-bottom-right-radius:6px}
+.msg.a{align-self:flex-start;background:var(--glass2);border:1px solid var(--line);border-bottom-left-radius:6px}
+.msg pre{background:#05060e;color:#b9c2ff;padding:12px;border-radius:12px;overflow:auto;font-family:var(--mono);font-size:12px;margin:8px 0;max-height:300px;white-space:pre}
+@keyframes pop{from{opacity:0;transform:translateY(8px) scale(.98)}}
+.typing i{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--t2);margin:0 2px;animation:bn 1s infinite}.typing i:nth-child(2){animation-delay:.15s}.typing i:nth-child(3){animation-delay:.3s}
+@keyframes bn{50%{transform:translateY(-6px)}}
+
+/* modal + toast */
+.ov{position:fixed;inset:0;z-index:50;background:rgba(3,4,12,.6);backdrop-filter:blur(8px);display:grid;place-items:center;padding:16px;animation:fi .2s}
+.md{width:min(520px,100%);max-height:92vh;overflow:auto;padding:22px;animation:pop .3s}
+@keyframes fi{from{opacity:0}}
+#toasts{position:fixed;right:18px;top:18px;z-index:90;display:flex;flex-direction:column;gap:8px}
+.toast{padding:12px 16px;border-radius:14px;background:var(--glass2);border:1px solid var(--line);backdrop-filter:blur(20px);animation:pop .3s;max-width:340px}
+.toast.bad{border-color:rgba(255,90,115,.5)}.toast.ok{border-color:rgba(53,230,160,.5)}
+
+/* login */
+#login{position:fixed;inset:0;z-index:30;display:grid;place-items:center;padding:20px;perspective:1000px}
+#login .g{width:min(380px,100%);padding:30px;text-align:center;transform:rotateX(4deg)}
+#login .cube{margin:0 auto 18px;width:54px;height:54px}
+#login .cube b{transform-origin:center}
+.hide{display:none!important}
+.empty{text-align:center;padding:44px 20px;color:var(--t2)}
+.spark{width:100%;height:120px;display:block}
+
+/* mobile */
+.mnav{display:none}
+@media(max-width:820px){
+  aside{display:none}
+  .mnav{display:flex;position:fixed;left:12px;right:12px;bottom:max(12px,env(safe-area-inset-bottom));z-index:20;padding:8px;gap:2px;justify-content:space-around}
+  .mnav .nv{flex-direction:column;gap:4px;font-size:10.5px;padding:8px 6px;flex:1;align-items:center}
+  header{padding:14px 16px 4px}#view{padding:10px 16px 110px}
+  .chat{height:calc(100vh - 360px)}.msg{max-width:92%}
+}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute"><defs><filter id="goo"><feGaussianBlur in="SourceGraphic" stdDeviation="22" result="b"/><feColorMatrix in="b" mode="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 20 -8"/></filter></defs></svg>
+<div id="bg"><i></i><i></i><i></i></div><div id="grain"></div>
+<div id="toasts"></div>
+
+<div id="login" class="hide">
+  <div class="g">
+    <div class="cube"><div><b></b><b></b><b></b><b></b><b></b><b></b></div></div>
+    <h2 style="margin:0 0 4px">MC Host</h2>
+    <p class="mut" style="margin:0 0 20px">অ্যাডমিন পাসওয়ার্ড দিয়ে প্রবেশ করুন</p>
+    <input id="pw" class="in" type="password" placeholder="পাসওয়ার্ড" autocomplete="current-password">
+    <button id="lg" class="btn pri" style="width:100%;margin-top:14px;justify-content:center">প্রবেশ</button>
+  </div>
+</div>
+
+<div id="app" class="hide">
+  <aside class="g" style="margin:14px 0 14px 14px;border-radius:26px">
+    <div class="brand"><div class="cube"><div><b></b><b></b><b></b><b></b><b></b><b></b></div></div><div><h1>MC Host</h1><small>Control Center</small></div></div>
+    <nav id="nav"></nav><div class="sp"></div>
+    <div class="row" style="padding:6px 8px"><span id="side-st" class="pill"><span class="dot"></span><span>--</span></span></div>
+    <button class="nv" id="theme"></button>
+    <button class="nv" id="out"></button>
+  </aside>
+  <main>
+    <header><h2 id="title"></h2><span id="hdr"></span></header>
+    <div id="view"></div>
+  </main>
+  <div class="mnav g" id="mnav"></div>
+</div>
+
+<script>
+'use strict';
+/* ---------- icons (all drawn in code) ---------- */
+const P = {
+  grid:'<rect x="3" y="3" width="7.5" height="7.5" rx="2"/><rect x="13.5" y="3" width="7.5" height="7.5" rx="2"/><rect x="3" y="13.5" width="7.5" height="7.5" rx="2"/><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="2"/>',
+  bot:'<rect x="4" y="8" width="16" height="12" rx="4"/><path d="M12 4v4M9 13v1.5M15 13v1.5M8 20v2M16 20v2"/><circle cx="12" cy="3.4" r="1"/>',
+  pulse:'<path d="M3 12h4l2.5-7 4 14 2.5-7H21"/>',
+  spark:'<path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M19 16l.8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8z"/>',
+  send:'<path d="M21 3L10 14"/><path d="M21 3l-7 18-4-7-7-4z"/>',
+  gear:'<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-1.8-.3 1.7 1.7 0 00-1 1.5V21a2 2 0 11-4 0v-.1a1.7 1.7 0 00-1.1-1.5 1.7 1.7 0 00-1.8.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.7 1.7 0 00.3-1.8 1.7 1.7 0 00-1.5-1H3a2 2 0 110-4h.1a1.7 1.7 0 001.5-1.1 1.7 1.7 0 00-.3-1.8l-.1-.1a2 2 0 112.8-2.8l.1.1a1.7 1.7 0 001.8.3H9a1.7 1.7 0 001-1.5V3a2 2 0 114 0v.1a1.7 1.7 0 001 1.5 1.7 1.7 0 001.8-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.7 1.7 0 00-.3 1.8V9a1.7 1.7 0 001.5 1H21a2 2 0 110 4h-.1a1.7 1.7 0 00-1.5 1z"/>',
+  play:'<path d="M7 4.5v15l12-7.5z"/>',stop:'<rect x="6" y="6" width="12" height="12" rx="2.5"/>',
+  redo:'<path d="M20 11a8 8 0 10-2.3 5.7"/><path d="M20 4v7h-7"/>',
+  trash:'<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>',
+  plus:'<path d="M12 5v14M5 12h14"/>',code:'<path d="M8 8l-5 4 5 4M16 8l5 4-5 4M14 5l-4 14"/>',
+  term:'<rect x="3" y="4" width="18" height="16" rx="3"/><path d="M7 10l3 2-3 2M12 15h5"/>',
+  sun:'<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5L19 19M5 19l1.5-1.5M17.5 6.5L19 5"/>',
+  moon:'<path d="M20 14.5A8.5 8.5 0 019.5 4a8.5 8.5 0 1010.5 10.5z"/>',
+  out:'<path d="M15 4h3a2 2 0 012 2v12a2 2 0 01-2 2h-3M10 8l-4 4 4 4M6 12h11"/>',
+  chat:'<path d="M20 12a8 8 0 01-11.6 7.1L4 20l1-4.2A8 8 0 1120 12z"/>',
+  chip:'<rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/>',
+  clock:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+  shield:'<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M9 12l2 2 4-4"/>',
+  bolt:'<path d="M13 2L4 14h7l-1 8 9-12h-7z"/>',
+  warn:'<path d="M12 3L2 20h20z"/><path d="M12 10v4M12 17.5v.1"/>',
+  edit:'<path d="M4 20h4L19 9a2.8 2.8 0 00-4-4L4 16z"/>',
+  undo:'<path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 010 12h-3"/>',
+  link:'<path d="M10 14a4 4 0 005.7 0l3-3a4 4 0 00-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 00-5.7 0l-3 3a4 4 0 005.7 5.7l1-1"/>',
+  check:'<path d="M5 12.5l4.5 4.5L19 7"/>',x:'<path d="M6 6l12 12M18 6L6 18"/>',
+  ram:'<rect x="3" y="7" width="18" height="10" rx="2"/><path d="M7 11v2M11 11v2M15 11v2M6 17v3M18 17v3"/>'
+};
+const ic = (n, cls = '') => `<svg class="i ${cls}" viewBox="0 0 24 24">${P[n] || ''}</svg>`;
+
+/* ---------- helpers ---------- */
+const $ = (s, el = document) => el.querySelector(s);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const fmt = (ms) => { const t = Math.max(0, Math.floor(ms / 1000)), d = Math.floor(t / 86400), h = Math.floor(t % 86400 / 3600), m = Math.floor(t % 3600 / 60), s = t % 60; return d ? `${d}দিন ${h}ঘ` : h ? `${h}ঘ ${m}মি` : m ? `${m}মি ${s}সে` : `${s}সে`; };
+async function api(path, method = 'GET', body) {
+  const r = await fetch('/api' + path, { method, headers: body ? { 'Content-Type': 'application/json' } : undefined, body: body ? JSON.stringify(body) : undefined });
+  const j = await r.json().catch(() => ({ ok: false, error: 'সার্ভার উত্তর দেয়নি' }));
+  if (r.status === 401 && path !== '/login') showLogin();
+  return j;
+}
+function toast(msg, kind = '') { const t = document.createElement('div'); t.className = 'toast ' + kind; t.textContent = msg; $('#toasts').append(t); setTimeout(() => t.remove(), 3800); }
+async function act(p, m = 'POST', b, okMsg) { const r = await api(p, m, b); r.ok ? (okMsg && toast(okMsg, 'ok')) : toast(r.error || 'ত্রুটি', 'bad'); await refresh(); return r; }
+function modal(html) { const o = document.createElement('div'); o.className = 'ov'; o.innerHTML = `<div class="g md">${html}</div>`; o.addEventListener('mousedown', (e) => { if (e.target === o) o.remove(); }); document.body.append(o); return o; }
+function confirmBox(text, fn) { const o = modal(`<p style="margin:0 0 18px;font-size:15px">${esc(text)}</p><div class="row" style="justify-content:flex-end"><button class="btn" data-c>না</button><button class="btn bad" data-y>হ্যাঁ</button></div>`); $('[data-c]', o).onclick = () => o.remove(); $('[data-y]', o).onclick = () => { o.remove(); fn(); }; }
+const STL = { online: 'অনলাইন', starting: 'কানেক্ট হচ্ছে', reconnecting: 'রিকানেক্ট', stopped: 'বন্ধ' };
+const pill = (s) => `<span class="pill s-${s}"><span class="dot"></span>${STL[s]}</span>`;
+function ringSvg(v) { const c = 2 * Math.PI * 24, col = v > 70 ? 'var(--ok)' : v > 40 ? 'var(--warn)' : 'var(--bad)'; return `<div class="ring"><svg width="62" height="62" viewBox="0 0 62 62"><circle cx="31" cy="31" r="24" fill="none" stroke="rgba(255,255,255,.1)" stroke-width="6"/><circle cx="31" cy="31" r="24" fill="none" stroke="${col}" stroke-width="6" stroke-linecap="round" stroke-dasharray="${c}" stroke-dashoffset="${c * (1 - v / 100)}" style="transition:stroke-dashoffset .8s"/></svg><b>${v}</b></div>`; }
+function hotbar(s) { const n = s.state === 'online' ? 9 : s.state === 'starting' ? 4 : s.state === 'reconnecting' ? 2 : 0, cls = s.state === 'online' ? 'on' : s.state === 'starting' ? 'mid' : 'rc'; return `<div class="hot">${Array.from({ length: 9 }, (_, i) => `<i class="${i < n ? cls : ''}"></i>`).join('')}</div>`; }
+function spark(points, key, color) {
+  if (points.length < 2) return '<div class="dim" style="padding:40px 0;text-align:center">ডাটা জমা হচ্ছে...</div>';
+  const W = 600, H = 120, max = Math.max(1, ...points.map((p) => p[key])), step = W / (points.length - 1);
+  const pts = points.map((p, i) => [i * step, H - 8 - (p[key] / max) * (H - 24)]);
+  const d = pts.map((p, i) => (i ? 'L' : 'M') + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join(' ');
+  return `<svg class="spark" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none"><defs><linearGradient id="sg${key}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${color}" stop-opacity=".45"/><stop offset="1" stop-color="${color}" stop-opacity="0"/></linearGradient></defs><path d="${d} L${W} ${H} L0 ${H}Z" fill="url(#sg${key})"/><path d="${d}" fill="none" stroke="${color}" stroke-width="2.5" stroke-linejoin="round" vector-effect="non-scaling-stroke"/></svg>`;
+}
+
+/* ---------- 3D tilt ---------- */
+document.addEventListener('mousemove', (e) => {
+  const el = e.target.closest && e.target.closest('.tilt'); if (!el) return;
+  const r = el.getBoundingClientRect(), x = (e.clientX - r.left) / r.width, y = (e.clientY - r.top) / r.height;
+  el.style.transform = `perspective(900px) rotateX(${(.5 - y) * 7}deg) rotateY(${(x - .5) * 9}deg) translateZ(0)`;
+  el.style.setProperty('--mx', x * 100 + '%'); el.style.setProperty('--my', y * 100 + '%');
+});
+document.addEventListener('mouseout', (e) => { const el = e.target.closest && e.target.closest('.tilt'); if (el && !el.contains(e.relatedTarget)) el.style.transform = ''; });
+
+/* ---------- state / routing ---------- */
+let S = null, page = 'dash', sel = null, tab = 'overview', chatBot = '', chatLog = {}, busy = false;
+const NAV = [['dash', 'grid', 'ড্যাশবোর্ড'], ['bots', 'bot', 'বট'], ['analyze', 'pulse', 'বিশ্লেষণ'], ['ai', 'spark', 'AI সহায়ক'], ['tg', 'send', 'টেলিগ্রাম'], ['set', 'gear', 'সেটিংস']];
+const TITLES = Object.fromEntries(NAV.map((n) => [n[0], n[2]]));
+function buildNav() {
+  $('#nav').innerHTML = NAV.map(([k, i, t]) => `<button class="nv ${page === k ? 'on' : ''}" data-p="${k}">${ic(i)}<span>${t}</span></button>`).join('');
+  $('#mnav').innerHTML = NAV.filter((n) => n[0] !== 'set').map(([k, i, t]) => `<button class="nv ${page === k ? 'on' : ''}" data-p="${k}">${ic(i)}<span>${t}</span></button>`).join('');
+  $('#theme').innerHTML = ic(document.documentElement.dataset.theme === 'light' ? 'moon' : 'sun') + '<span>থিম</span>';
+  $('#out').innerHTML = ic('out') + '<span>লগআউট</span>';
+  document.querySelectorAll('[data-p]').forEach((b) => (b.onclick = () => go(b.dataset.p)));
+}
+function go(p, botId) { page = p; if (botId) { sel = botId; tab = 'overview'; } if (p === 'bots' && !botId) sel = null; buildNav(); render(true); }
+function showLogin() { $('#app').classList.add('hide'); $('#login').classList.remove('hide'); $('#pw').focus(); }
+async function refresh() { const j = await api('/state'); if (!j.ok) return; S = j; if (!$('#app').classList.contains('hide')) { header(); render(false); } }
+function header() {
+  $('#title').textContent = TITLES[page] + (page === 'bots' && sel ? '' : '');
+  const f = S.fleet; $('#hdr').innerHTML = `<span class="pill"><span class="dot" style="background:var(--ok)"></span>${f.online}/${f.total} অনলাইন</span>`;
+  const sd = $('#side-st'); sd.className = 'pill ' + (f.online ? 's-online' : 's-stopped'); sd.lastElementChild.textContent = f.total ? `${f.online}/${f.total} চলছে` : 'কোনো বট নেই';
+}
+
+/* ---------- views ---------- */
+function render(force) {
+  if (!S) return;
+  const v = $('#view');
+  // ইনপুট ফোকাসে থাকলে ফুল রি-রেন্ডার এড়িয়ে লাইভ অংশ আপডেট
+  if (!force && ((page === 'bots' && sel && tab !== 'overview') || ['ai', 'tg', 'set'].includes(page))) return live();
+  if (!force && (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName) || document.querySelector('.ov'))) return live();
+  const scroll = v.scrollTop;
+  v.innerHTML = ({ dash: vDash, bots: vBots, analyze: vAnalyze, ai: vAi, tg: vTg, set: vSet })[page]();
+  bind(); v.scrollTop = force ? 0 : scroll;
+}
+function live() { document.querySelectorAll('[data-live]').forEach((el) => { const b = S.bots.find((x) => x.id === el.dataset.live); if (b && el.dataset.k === 'pill') el.innerHTML = pill(b.snap.state); }); }
+
+function tile(lbl, val, sub, icon, color) { return `<div class="g tile tilt"><div class="orb" style="background:${color}"></div><div class="lbl">${ic(icon)}${lbl}</div><div class="val">${val}</div><div class="sub">${sub}</div></div>`; }
+
+function vDash() {
+  const f = S.fleet, bots = S.bots, h = S.history;
+  const avg = bots.length ? Math.round(bots.reduce((a, b) => a + b.snap.health, 0) / bots.length) : 0;
+  const crashes = bots.reduce((a, b) => a + ((b.snap.stats || {}).crashes || 0), 0);
+  return `<div class="grid g4">
+    ${tile('অনলাইন বট', `${f.online}<span style="font-size:18px;opacity:.6">/${f.total}</span>`, 'এখন চলমান', 'bot', 'var(--ok)')}
+    ${tile('গড় স্বাস্থ্য', avg, 'সব বটের স্কোর (১০০ এর মধ্যে)', 'shield', 'var(--a1)')}
+    ${tile('বটের RAM', `${f.mem}<span style="font-size:16px;opacity:.6"> MB</span>`, `হোস্ট ${S.host.rss} MB`, 'ram', 'var(--a2)')}
+    ${tile('মোট ক্র্যাশ/রিকানেক্ট', crashes, `হোস্ট আপটাইম ${fmt(S.host.uptime)}`, 'bolt', 'var(--a3)')}
+  </div>
+  <div class="grid g2" style="margin-top:16px">
+    <div class="g p"><div class="h3">অনলাইন বট (সময়ের সাথে)</div>${spark(h, 'online', '#35e6a0')}</div>
+    <div class="g p"><div class="h3">বটের মেমরি ব্যবহার (MB)</div>${spark(h, 'mem', '#27d3ff')}</div>
+  </div>
+  <div class="h3" style="margin:26px 4px 12px">বট ফ্লিট</div>
+  ${bots.length ? `<div class="grid g3">${bots.map(botCard).join('')}</div>` : `<div class="g empty">${ic('bot')}<p>এখনো কোনো বট নেই</p><button class="btn pri" data-new>${ic('plus')}নতুন বট যোগ করুন</button></div>`}
+  <div class="g p" style="margin-top:16px"><div class="h3">AI</div><div class="row wrap"><span class="pill">${ic('spark')}${S.ai.ready ? 'Mistral ' + esc(S.ai.model) : 'বন্ধ'}</span><span class="pill">${ic('send')}টেলিগ্রাম ${S.tg.filter((t) => t.running).length}/${S.tg.length}</span><span class="pill">${ic('chip')}${esc(S.host.platform)} · পোর্ট ${S.host.port}</span><span class="pill">ডাটা: ${esc(S.host.mode)}</span></div></div>`;
+}
+
+function botCard(b) {
+  const s = b.snap;
+  return `<div class="g bc tilt" data-open="${b.id}">
+    <div class="row"><div style="flex:1;min-width:0"><div class="nm">${esc(b.username)}</div><div class="addr">${esc(b.host)}:${b.port}</div><div style="margin-top:8px" data-live="${b.id}" data-k="pill">${pill(s.state)}</div></div>${ringSvg(s.health)}</div>
+    ${hotbar(s)}
+    <div class="chips">
+      ${s.state === 'online' ? `<span class="chip">${ic('clock')}${fmt(Date.now() - s.onlineSince)}</span>${s.info && s.info.ping != null ? `<span class="chip">${ic('pulse')}${s.info.ping}ms</span>` : ''}${s.info && s.info.players != null ? `<span class="chip">${ic('bot')}${s.info.players}</span>` : ''}` : ''}
+      ${s.state === 'reconnecting' ? `<span class="chip">${ic('redo')}${s.nextIn}সে পরে</span>` : ''}
+      ${s.diag && s.state !== 'online' ? `<span class="chip" style="color:var(--warn)">${ic('warn')}${esc(s.diag.title)}</span>` : ''}
+    </div>
+    <div class="row" style="margin-top:14px" onclick="event.stopPropagation()">
+      ${s.state === 'stopped' ? `<button class="btn ok sm" data-a="start" data-id="${b.id}">${ic('play')}চালু</button>` : `<button class="btn bad sm" data-a="stop" data-id="${b.id}">${ic('stop')}বন্ধ</button><button class="btn sm" data-a="restart" data-id="${b.id}">${ic('redo')}</button>`}
+    </div></div>`;
+}
+
+function vBots() {
+  if (sel && S.bots.find((b) => b.id === sel)) return vDetail(S.bots.find((b) => b.id === sel));
+  return `<div class="row" style="margin-bottom:16px"><div class="mut" style="flex:1">${S.bots.length}/${S.host.limits.mc} বট</div><button class="btn pri" data-new>${ic('plus')}নতুন বট</button></div>
+  ${S.bots.length ? `<div class="grid g3">${S.bots.map(botCard).join('')}</div>` : `<div class="g empty">${ic('bot')}<p>কোনো বট নেই</p></div>`}`;
+}
+
+function vDetail(b) {
+  const s = b.snap, tabs = [['overview', 'সারসংক্ষেপ'], ['console', 'কনসোল'], ['script', 'স্ক্রিপ্ট'], ['analysis', 'বিশ্লেষণ'], ['config', 'সেটিংস']];
+  let body = '';
+  if (tab === 'overview') {
+    const i = s.info || {};
+    body = `<div class="grid g4">
+      ${tile('অবস্থা', STL[s.state], s.state === 'reconnecting' ? `পরের চেষ্টা ${s.nextIn}সে` : '', 'pulse', 'var(--a2)')}
+      ${tile('আপটাইম', s.state === 'online' ? fmt(Date.now() - s.onlineSince) : '--', `মোট ${fmt((s.stats || {}).upMs || 0)}`, 'clock', 'var(--ok)')}
+      ${tile('স্বাস্থ্য', s.health, 'স্কোর', 'shield', 'var(--a1)')}
+      ${tile('RAM', i.mem ? i.mem + ' MB' : '--', i.ping != null ? `পিং ${i.ping}ms` : '', 'ram', 'var(--a3)')}
+    </div>
+    <div class="grid g2" style="margin-top:16px">
+      <div class="g p"><div class="h3">লাইভ তথ্য</div>${s.state === 'online' ? `<div class="col" style="gap:10px"><div>HP<div class="bar"><i style="width:${Math.min(100, (i.health || 0) * 5)}%"></i></div></div><div>ক্ষুধা<div class="bar"><i style="width:${Math.min(100, (i.food || 0) * 5)}%"></i></div></div><div class="mut">স্থান: ${i.pos ? i.pos.join(', ') : '--'} &nbsp; ডাইমেনশন: ${esc(i.dimension || '--')} &nbsp; মোড: ${esc(i.mode || '--')} &nbsp; প্লেয়ার: ${i.players ?? '--'}</div></div>` : `<div class="mut">বট অনলাইন নয়</div>`}</div>
+      <div class="g p"><div class="h3">নিয়ন্ত্রণ</div><div class="row wrap">
+        ${s.state === 'stopped' ? `<button class="btn ok" data-a="start" data-id="${b.id}">${ic('play')}চালু করুন</button>` : `<button class="btn bad" data-a="stop" data-id="${b.id}">${ic('stop')}বন্ধ করুন</button><button class="btn" data-a="restart" data-id="${b.id}">${ic('redo')}রিস্টার্ট</button>`}
+        <button class="btn" data-ai-bot="${b.id}">${ic('spark')}AI সহায়ক</button></div>
+        ${s.state === 'online' ? `<div class="row" style="margin-top:14px"><input class="in" id="say" placeholder="গেমে চ্যাট পাঠান..."><button class="btn pri" id="sayb">${ic('send')}</button></div>` : ''}
+        ${s.diag && s.state !== 'online' ? `<div style="margin-top:14px;padding:12px;border-radius:14px;background:rgba(255,185,74,.12);border:1px solid rgba(255,185,74,.35)"><b>${esc(s.diag.title)}</b><div class="mut" style="margin-top:4px">${esc(s.diag.hint)}</div></div>` : ''}
+      </div></div>`;
+  } else if (tab === 'console') body = `<div class="g p"><div class="row" style="margin-bottom:12px"><div class="h3" style="margin:0;flex:1">লাইভ লগ</div><button class="btn sm" id="lgr">${ic('redo')}রিফ্রেশ</button></div><div class="term" id="term">লোড হচ্ছে...</div></div>`;
+  else if (tab === 'script') body = `<div class="g p"><div class="row wrap" style="margin-bottom:12px"><div class="h3" style="margin:0;flex:1">mineflayer স্ক্রিপ্ট</div><button class="btn sm" id="scundo">${ic('undo')}আগের সংস্করণ</button><button class="btn sm" id="screset">ডিফল্ট</button><button class="btn sm" data-ai-bot="${b.id}">${ic('spark')}AI দিয়ে আপডেট</button><button class="btn pri sm" id="scsave">${ic('check')}সেভ ও রিস্টার্ট</button></div><textarea class="in" id="code" spellcheck="false" style="min-height:440px">লোড হচ্ছে...</textarea></div>`;
+  else if (tab === 'analysis') body = `<div id="an">${'<div class="g empty">লোড হচ্ছে...</div>'}</div>`;
+  else body = `<div class="g p" style="max-width:640px"><div class="col">
+      <div><label>গেম-নাম</label><input class="in" id="c-u" value="${esc(b.username)}"></div>
+      <div class="row"><div style="flex:1"><label>সার্ভার</label><input class="in" id="c-h" value="${esc(b.host)}"></div><div style="width:110px"><label>পোর্ট</label><input class="in" id="c-p" type="number" value="${b.port}"></div></div>
+      <div><label>ভার্সন (ফাঁকা = অটো)</label><input class="in" id="c-v" value="${esc(b.version)}" placeholder="1.20.4"></div>
+      <div class="row"><div style="flex:1">টেলিগ্রাম নোটিফিকেশন</div><div class="sw ${b.notify ? 'on' : ''}" id="c-n"></div></div>
+      <div class="row"><button class="btn pri" id="c-s">${ic('check')}সেভ</button><div class="sp"></div><button class="btn bad" id="c-d">${ic('trash')}বট মুছুন</button></div></div></div>`;
+  return `<div class="row wrap" style="margin-bottom:14px"><button class="btn sm" data-back>${ic('undo')}সব বট</button><b style="font-size:20px">${esc(b.username)}</b><span data-live="${b.id}" data-k="pill">${pill(s.state)}</span><span class="dim">${esc(b.host)}:${b.port}</span></div>
+  <div class="tabs">${tabs.map(([k, t]) => `<button class="tab ${tab === k ? 'on' : ''}" data-tab="${k}">${t}</button>`).join('')}</div>${body}`;
+}
+
+function vAnalyze() {
+  if (!S.bots.length) return '<div class="g empty">বিশ্লেষণের জন্য আগে বট যোগ করুন</div>';
+  const reasons = {}; S.bots.forEach((b) => Object.entries((b.snap.stats || {}).reasons || {}).forEach(([k, v]) => (reasons[k] = (reasons[k] || 0) + v)));
+  const top = Object.entries(reasons).sort((a, b) => b[1] - a[1]), max = top[0] ? top[0][1] : 1;
+  return `<div class="grid g2">
+    <div class="g p"><div class="h3">স্বাস্থ্য র‍্যাঙ্কিং</div><div class="col">${[...S.bots].sort((a, b) => b.snap.health - a.snap.health).map((b) => `<div class="row" style="cursor:pointer" data-open="${b.id}">${ringSvg(b.snap.health)}<div style="flex:1;min-width:0"><b>${esc(b.username)}</b><div class="dim">সেশন ${(b.snap.stats || {}).sessions || 0} · ক্র্যাশ ${(b.snap.stats || {}).crashes || 0} · আপটাইম ${fmt((b.snap.stats || {}).upMs || 0)}</div></div>${pill(b.snap.state)}</div>`).join('')}</div></div>
+    <div class="g p"><div class="h3">সমস্যার ধরন (সব বট)</div>${top.length ? `<div class="col">${top.map(([k, v]) => `<div><div class="row"><span style="flex:1">${esc(k)}</span><span class="mut">${v}</span></div><div class="bar"><i style="width:${v / max * 100}%"></i></div></div>`).join('')}</div>` : '<div class="mut">এখনো কোনো সমস্যা রেকর্ড হয়নি। চমৎকার!</div>'}</div>
+  </div>
+  <div class="g p" style="margin-top:16px"><div class="h3">ফ্লিট সময়রেখা</div>${spark(S.history, 'online', '#7c5cff')}</div>
+  <div class="g p" style="margin-top:16px"><div class="h3">বর্তমান সমস্যা ও সমাধান</div>${S.bots.filter((b) => b.snap.diag && b.snap.state !== 'online').map((b) => `<div style="padding:12px 0;border-bottom:1px solid var(--line)"><b>${esc(b.username)}</b> &middot; ${esc(b.snap.diag.title)}<div class="mut">${esc(b.snap.diag.hint)}</div></div>`).join('') || '<div class="mut">সব ঠিক আছে।</div>'}</div>`;
+}
+
+function vAi() {
+  if (!S.ai.ready) return `<div class="g empty">${ic('spark')}<p>AI চালু করতে Mistral API key দিন</p><button class="btn pri" data-p="set" onclick="go('set')">সেটিংসে যান</button></div>`;
+  const log = chatLog[chatBot || '_fleet'] || [];
+  return `<div class="row wrap" style="margin-bottom:14px"><div style="width:260px;max-width:100%"><select class="in" id="ai-bot"><option value="">সব বট (সাধারণ)</option>${S.bots.map((b) => `<option value="${b.id}" ${chatBot === b.id ? 'selected' : ''}>${esc(b.username)}</option>`).join('')}</select></div><span class="pill">${ic('spark')}${esc(S.ai.model)}</span><div class="sp"></div><button class="btn sm" id="ai-an" ${chatBot ? '' : 'disabled'}>${ic('pulse')}AI বিশ্লেষণ</button><button class="btn sm" id="ai-clr">${ic('trash')}মেমরি মুছুন</button></div>
+  <div class="g p"><div class="chat scr" id="chat">${log.length ? log.map(msgHtml).join('') : `<div class="empty">${ic('chat')}<p>বটের স্ক্রিপ্ট, সমস্যা বা নতুন ফিচার নিয়ে জিজ্ঞেস করুন। AI বটের লগ, স্ক্রিপ্ট ও আগের কথা মনে রাখে।</p></div>`}</div>
+  <div class="row wrap" style="margin:10px 0">${chatBot ? ['বটের সমস্যা বিশ্লেষণ করো', 'স্ক্রিপ্ট ঠিক করে নতুন করে দাও', 'বটকে আরও মানুষের মতো করো'].map((q) => `<button class="btn sm" data-q="${esc(q)}">${esc(q)}</button>`).join('') : ''}</div>
+  <div class="row"><textarea class="in" id="ai-in" rows="2" style="min-height:0;font-family:var(--font);font-size:14px" placeholder="যা চান লিখুন..."></textarea><button class="btn pri" id="ai-send">${ic('send')}</button></div></div>`;
+}
+function msgHtml(m) {
+  let h = esc(m.text).replace(/```(?:js|javascript)?\n([\s\S]*?)```/g, (_, c) => `<pre>${c}</pre>`);
+  if (m.typing) h = '<span class="typing"><i></i><i></i><i></i></span>';
+  const apply = m.code ? `<div class="row" style="margin-top:8px"><button class="btn ok sm" data-apply="${esc(m.bot)}" data-mi="${m.i}">${ic('check')}প্রয়োগ করুন</button></div>` : '';
+  return `<div class="msg ${m.role === 'user' ? 'u' : 'a'}">${h}${apply}</div>`;
+}
+
+function vTg() {
+  return `<div class="grid g2"><div class="g p"><div class="h3">টেলিগ্রাম বট যোগ করুন</div><div class="col"><div><label>BotFather থেকে পাওয়া টোকেন</label><input class="in" id="tg-t" placeholder="123456:ABC..."></div><button class="btn pri" id="tg-add" style="align-self:flex-start">${ic('plus')}যোগ করুন</button>
+    <div class="dim">যোগ করার পর টেলিগ্রামে বটকে /start দিন। প্রথম যিনি /start দেবেন তিনিই মালিক হবেন (অথবা OWNER_ID env ব্যবহার করুন)। সীমা: ${S.host.limits.tg}টি।</div></div></div>
+  <div class="g p"><div class="h3">সংযুক্ত বট</div>${S.tg.length ? `<div class="col">${S.tg.map((t) => `<div class="row"><span class="pill ${t.running ? 's-online' : ''}"><span class="dot"></span>${t.running ? 'চলছে' : 'বন্ধ'}</span><b style="flex:1">@${esc(t.username)}</b><span class="dim">${t.owner ? 'মালিক সেট' : 'মালিক নেই'}</span><button class="btn bad sm" data-tgdel="${t.id}">${ic('trash')}</button></div>`).join('')}</div>` : '<div class="mut">কোনো টেলিগ্রাম বট নেই</div>'}</div></div>`;
+}
+
+function vSet() {
+  const a = S.ai, h = S.host;
+  return `<div class="grid g2">
+  <div class="g p"><div class="h3">Mistral AI</div><div class="col">
+    <div><label>API key ${a.keyMask ? `<span class="pill" style="margin-left:6px">${esc(a.keyMask)}${a.fromEnv ? ' (env)' : ''}</span>` : ''}</label><input class="in" id="k" type="password" placeholder="${a.ready ? 'নতুন key দিলে বদলাবে' : 'Mistral API key'}" autocomplete="off"></div>
+    <div><label>মডেল</label><div class="row"><select class="in" id="m"><option>${esc(a.model)}</option></select><button class="btn sm" id="mload">${ic('redo')}লোড</button></div></div>
+    <div class="row wrap"><button class="btn pri" id="ks">${ic('check')}সেভ</button><button class="btn" id="kt">${ic('bolt')}টেস্ট</button>${a.ready ? `<button class="btn bad" id="kc">${ic('trash')}key মুছুন</button>` : ''}</div>
+    <div class="dim">key console.mistral.ai থেকে নিন। মডেল লিস্ট key দিয়ে লাইভ লোড হয়।</div></div></div>
+  <div class="g p"><div class="h3">হোস্ট তথ্য</div><div class="col" style="gap:8px">
+    ${[['প্ল্যাটফর্ম', h.platform], ['শোনা পোর্ট', '0.0.0.0:' + h.port], ['Node', h.node], ['ডাটা মোড', h.mode], ['হোস্ট RAM', h.rss + ' MB'], ['CPU', h.cpus], ['আপটাইম', fmt(h.uptime)], ['বট সীমা', h.limits.mc]].map(([k, v]) => `<div class="row"><span class="mut" style="flex:1">${k}</span><b>${esc(v)}</b></div>`).join('')}
+    <div class="dim" style="margin-top:6px">Wispbyte-এ প্যানেলে দেখানো পোর্টটি PORT (বা SERVER_PORT) হিসেবে সেট থাকলে সার্ভার 0.0.0.0-তে সেই পোর্টে চলে।</div></div></div></div>`;
+}
+
+/* ---------- event binding ---------- */
+function bind() {
+  const v = $('#view');
+  v.querySelectorAll('[data-open]').forEach((el) => (el.onclick = () => go('bots', el.dataset.open)));
+  v.querySelectorAll('[data-a]').forEach((el) => (el.onclick = (e) => { e.stopPropagation(); act(`/bots/${el.dataset.id}/${el.dataset.a}`); }));
+  v.querySelectorAll('[data-new]').forEach((el) => (el.onclick = newBot));
+  v.querySelectorAll('[data-back]').forEach((el) => (el.onclick = () => go('bots')));
+  v.querySelectorAll('[data-tab]').forEach((el) => (el.onclick = () => { tab = el.dataset.tab; render(true); }));
+  v.querySelectorAll('[data-ai-bot]').forEach((el) => (el.onclick = () => { chatBot = el.dataset.aiBot; go('ai'); }));
+  const b = sel && S.bots.find((x) => x.id === sel);
+  if (page === 'bots' && b) {
+    if ($('#sayb')) $('#sayb').onclick = async () => { const t = $('#say').value.trim(); if (t) { await act(`/bots/${b.id}/say`, 'POST', { text: t }); $('#say').value = ''; } };
+    if (tab === 'console') { const load = async () => { const r = await api(`/bots/${b.id}/logs`); const t = $('#term'); if (!t || !r.ok) return; const down = t.scrollTop + t.clientHeight >= t.scrollHeight - 30; t.innerHTML = r.logs.map((l) => `<div class="${l.includes(' ! ') || l.includes('kicked') ? 'e' : l.includes('সার্ভারে ঢুকেছে') ? 'k' : ''}">${esc(l)}</div>`).join('') || '(লগ নেই)'; if (down) t.scrollTop = t.scrollHeight; }; load(); $('#lgr').onclick = load; clearInterval(window._lt); window._lt = setInterval(() => (tab === 'console' && page === 'bots' ? load() : clearInterval(window._lt)), 2500); }
+    if (tab === 'script') {
+      api(`/bots/${b.id}/script`).then((r) => { if ($('#code')) $('#code').value = r.code || ''; });
+      $('#scsave').onclick = () => act(`/bots/${b.id}/script`, 'PUT', { code: $('#code').value }, 'স্ক্রিপ্ট সেভ হয়েছে');
+      $('#scundo').onclick = () => act(`/bots/${b.id}/script/rollback`, 'POST', null, 'আগের সংস্করণ ফেরত এসেছে').then(() => render(true));
+      $('#screset').onclick = () => confirmBox('ডিফল্ট স্ক্রিপ্টে ফিরে যাবেন?', () => act(`/bots/${b.id}/script/reset`, 'POST', null, 'রিসেট হয়েছে').then(() => render(true)));
+    }
+    if (tab === 'analysis') loadAnalysis(b);
+    if (tab === 'config') {
+      $('#c-n').onclick = (e) => e.currentTarget.classList.toggle('on');
+      $('#c-s').onclick = () => act(`/bots/${b.id}`, 'PATCH', { username: $('#c-u').value.trim(), host: $('#c-h').value.trim(), port: $('#c-p').value, version: $('#c-v').value, notify: $('#c-n').classList.contains('on') }, 'সেভ হয়েছে');
+      $('#c-d').onclick = () => confirmBox('বট ও তার স্ক্রিপ্ট মুছে যাবে। নিশ্চিত?', async () => { await act(`/bots/${b.id}`, 'DELETE'); sel = null; render(true); });
+    }
+  }
+  if (page === 'ai') bindAi();
+  if (page === 'tg') {
+    $('#tg-add').onclick = async () => { const r = await api('/tg', 'POST', { token: $('#tg-t').value.trim() }); r.ok ? toast('যোগ হয়েছে: @' + r.username, 'ok') : toast(r.error, 'bad'); await refresh(); render(true); };
+    v.querySelectorAll('[data-tgdel]').forEach((el) => (el.onclick = () => confirmBox('এই টেলিগ্রাম বট সরাবেন?', () => act('/tg/' + el.dataset.tgdel, 'DELETE'))));
+  }
+  if (page === 'set') bindSet();
+}
+
+async function loadAnalysis(b) {
+  const r = await api(`/bots/${b.id}/analysis`); const el = $('#an'); if (!el || !r.ok) return;
+  const s = r.snap, st = s.stats || {}, top = Object.entries(st.reasons || {}).sort((a, c) => c[1] - a[1]), mx = top[0] ? top[0][1] : 1;
+  el.innerHTML = `<div class="grid g2"><div class="g p"><div class="row">${ringSvg(s.health)}<div><b style="font-size:16px">স্বাস্থ্য স্কোর</b><div class="dim">আপটাইম অনুপাত, ক্র্যাশ ও বর্তমান অবস্থা মিলিয়ে</div></div></div>
+    <div class="grid" style="grid-template-columns:repeat(3,1fr);margin-top:16px;gap:10px"><div class="chip" style="flex-direction:column;align-items:flex-start"><span class="dim">সেশন</span><b>${st.sessions || 0}</b></div><div class="chip" style="flex-direction:column;align-items:flex-start"><span class="dim">ক্র্যাশ</span><b>${st.crashes || 0}</b></div><div class="chip" style="flex-direction:column;align-items:flex-start"><span class="dim">আপটাইম</span><b>${fmt(st.upMs || 0)}</b></div></div>
+    <div class="h3" style="margin-top:18px">সমস্যার ধরন</div>${top.length ? top.map(([k, v]) => `<div style="margin-bottom:10px"><div class="row"><span style="flex:1">${esc(k)}</span><span class="mut">${v}</span></div><div class="bar"><i style="width:${v / mx * 100}%"></i></div></div>`).join('') : '<div class="mut">কোনো সমস্যা নেই</div>'}
+    ${s.diag ? `<div style="margin-top:14px;padding:12px;border-radius:14px;background:rgba(255,185,74,.12);border:1px solid rgba(255,185,74,.35)"><b>${esc(s.diag.title)}</b><div class="mut">${esc(s.diag.hint)}</div></div>` : ''}
+    ${S.ai.ready ? `<button class="btn pri" id="aian" style="margin-top:14px">${ic('spark')}AI দিয়ে বিশ্লেষণ</button><div id="aiout" class="mut" style="margin-top:12px;white-space:pre-wrap"></div>` : ''}</div>
+  <div class="g p"><div class="h3">ঘটনার সময়রেখা</div><div class="tl">${r.events.length ? [...r.events].reverse().map((e) => `<div class="${e.type === 'online' ? 'on' : ['offline', 'kick', 'watchdog'].includes(e.type) ? 'off' : ''}"><b>${esc(e.type)}</b> ${esc(e.text)}<div class="dim">${new Date(e.t).toLocaleTimeString()}</div></div>`).join('') : '<div class="mut">কোনো ঘটনা নেই</div>'}</div></div></div>`;
+  if ($('#aian')) $('#aian').onclick = async () => { const o = $('#aiout'); o.textContent = 'বিশ্লেষণ চলছে...'; const a = await api(`/bots/${b.id}/ai/analyze`, 'POST'); o.textContent = a.ok ? a.text : a.error; };
+}
+
+function bindAi() {
+  const sendMsg = async (text) => {
+    if (busy || !text.trim()) return; busy = true;
+    const key = chatBot || '_fleet', log = (chatLog[key] ||= []);
+    log.push({ role: 'user', text }); const t = { role: 'ai', typing: true, text: '' }; log.push(t); render(true);
+    const r = await api('/ai/chat', 'POST', { botId: chatBot || null, text }); log.pop();
+    const m = { role: 'ai', text: r.ok ? r.reply : 'ত্রুটি: ' + r.error, code: r.ok && r.code ? r.code : '', bot: chatBot, i: log.length }; if (r.ok && r.error) m.text += '\n(কোডে সিনট্যাক্স ত্রুটি, তাই প্রয়োগ বন্ধ)';
+    log.push(m); busy = false; render(true); const c = $('#chat'); if (c) c.scrollTop = c.scrollHeight;
+  };
+  $('#ai-bot').onchange = (e) => { chatBot = e.target.value; render(true); };
+  $('#ai-send').onclick = () => { const i = $('#ai-in'); const t = i.value; i.value = ''; sendMsg(t); };
+  $('#ai-in').onkeydown = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('#ai-send').click(); } };
+  document.querySelectorAll('[data-q]').forEach((el) => (el.onclick = () => sendMsg(el.dataset.q)));
+  $('#ai-clr').onclick = () => confirmBox('AI মেমরি ও কথোপকথন মুছবেন?', async () => { await api('/ai/memory' + (chatBot ? '?botId=' + chatBot : ''), 'DELETE'); chatLog[chatBot || '_fleet'] = []; toast('মেমরি মুছেছে', 'ok'); render(true); });
+  if ($('#ai-an')) $('#ai-an').onclick = async () => { const key = chatBot; const log = (chatLog[key] ||= []); log.push({ role: 'ai', typing: true, text: '' }); render(true); const a = await api(`/bots/${key}/ai/analyze`, 'POST'); log.pop(); log.push({ role: 'ai', text: a.ok ? a.text : 'ত্রুটি: ' + a.error }); render(true); };
+  document.querySelectorAll('[data-apply]').forEach((el) => (el.onclick = async () => { const r = await act(`/bots/${el.dataset.apply}/ai/apply`, 'POST', {}, 'স্ক্রিপ্ট প্রয়োগ হয়েছে'); if (r.ok) el.remove(); }));
+  const c = $('#chat'); if (c) c.scrollTop = c.scrollHeight;
+}
+
+function bindSet() {
+  const load = async () => { const r = await api('/ai/models'); if (!r.ok) return toast(r.error, 'bad'); $('#m').innerHTML = r.models.map((m) => `<option ${m === r.current ? 'selected' : ''}>${esc(m)}</option>`).join(''); toast(r.models.length + 'টি মডেল পাওয়া গেছে', 'ok'); };
+  $('#mload').onclick = load;
+  $('#ks').onclick = async () => { const body = { mistralModel: $('#m').value }; if ($('#k').value.trim()) body.mistralKey = $('#k').value.trim(); await act('/settings', 'PUT', body, 'AI সেটিংস সেভ হয়েছে'); if (body.mistralKey) { render(true); load(); } };
+  $('#kt').onclick = async () => { const r = await api('/ai/chat', 'POST', { text: 'এক লাইনে বলো তুমি কাজ করছ।' }); r.ok ? toast('AI কাজ করছে: ' + r.reply.slice(0, 80), 'ok') : toast(r.error, 'bad'); };
+  if ($('#kc')) $('#kc').onclick = () => confirmBox('API key মুছবেন?', () => act('/settings', 'PUT', { mistralKey: '' }, 'মুছে ফেলা হয়েছে'));
+  if (S.ai.ready) load();
+}
+
+function newBot() {
+  const o = modal(`<h3 style="margin:0 0 16px">নতুন বট</h3><div class="col">
+    <div><label>গেম-নাম (৩-১৬ অক্ষর: A-Z 0-9 _)</label><input class="in" id="n-u"></div>
+    <div class="row"><div style="flex:1"><label>সার্ভার (host অথবা host:port)</label><input class="in" id="n-h" placeholder="play.example.com"></div><div style="width:100px"><label>পোর্ট</label><input class="in" id="n-p" type="number" placeholder="25565"></div></div>
+    <div><label>ভার্সন (ঐচ্ছিক)</label><input class="in" id="n-v" placeholder="1.20.4"></div>
+    <div class="dim">ডিফল্ট স্ক্রিপ্ট দিয়ে তৈরি হবে। পরে স্ক্রিপ্ট ট্যাব বা AI সহায়ক দিয়ে বদলানো যাবে।</div>
+    <div class="row" style="justify-content:flex-end"><button class="btn" data-c>বাতিল</button><button class="btn pri" data-s>${ic('plus')}তৈরি করুন</button></div></div>`);
+  $('[data-c]', o).onclick = () => o.remove();
+  $('[data-s]', o).onclick = async () => { const r = await api('/bots', 'POST', { username: $('#n-u').value.trim(), host: $('#n-h').value.trim(), port: $('#n-p').value, version: $('#n-v').value.trim() }); if (!r.ok) return toast(r.error, 'bad'); o.remove(); await refresh(); await api(`/bots/${r.id}/start`, 'POST'); toast('বট তৈরি হয়ে চালু হচ্ছে', 'ok'); go('bots', r.id); refresh(); };
+  $('#n-u', o).focus();
+}
+
+/* ---------- boot ---------- */
+$('#theme').onclick = () => { const l = document.documentElement.dataset.theme === 'light'; document.documentElement.dataset.theme = l ? 'dark' : 'light'; try { localStorage.setItem('mch-theme', l ? 'dark' : 'light'); } catch { /* ignore */ } buildNav(); };
+$('#out').onclick = async () => { await api('/logout', 'POST'); showLogin(); };
+async function doLogin() { const r = await api('/login', 'POST', { password: $('#pw').value }); if (!r.ok) return toast(r.error, 'bad'); $('#pw').value = ''; start(); }
+$('#lg').onclick = doLogin; $('#pw').onkeydown = (e) => e.key === 'Enter' && doLogin();
+async function start() {
+  const me = await api('/me'); if (!me.ok) return showLogin();
+  $('#login').classList.add('hide'); $('#app').classList.remove('hide'); buildNav(); await refresh(); render(true);
+  clearInterval(window._poll); window._poll = setInterval(() => { if (!document.hidden) refresh(); }, 3000);
+}
+try { const t = localStorage.getItem('mch-theme'); if (t) document.documentElement.dataset.theme = t; } catch { /* ignore */ }
+buildNav(); start();
+</script>
+</body>
+</html>
