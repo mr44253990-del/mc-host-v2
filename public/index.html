@@ -152,10 +152,27 @@ textarea.in{resize:vertical;font-family:var(--mono);font-size:12.5px;line-height
 .toast.bad{border-color:rgba(255,90,115,.5)}.toast.ok{border-color:rgba(53,230,160,.5)}
 
 /* login */
-#login{position:fixed;inset:0;z-index:30;display:grid;place-items:center;padding:20px;perspective:1000px}
-#login .g{width:min(380px,100%);padding:30px;text-align:center;transform:rotateX(4deg)}
-#login .cube{margin:0 auto 18px;width:54px;height:54px}
-#login .cube b{transform-origin:center}
+#login{position:fixed;inset:0;z-index:30;display:flex;align-items:center;justify-content:center;gap:6vw;padding:24px;overflow:auto}
+.lg-hero{max-width:420px;display:flex;flex-direction:column;gap:18px}
+.lg-hero h1{font-size:44px;line-height:1.1;margin:0;letter-spacing:-1px;background:linear-gradient(135deg,var(--t1),var(--a2) 60%,var(--a3));-webkit-background-clip:text;background-clip:text;color:transparent}
+.lg-hero p{margin:0;color:var(--t2);font-size:15px;line-height:1.7}
+.lg-feat{display:flex;flex-direction:column;gap:10px}.lg-feat div{display:flex;align-items:center;gap:12px;color:var(--t2)}
+.lg-feat span{width:34px;height:34px;border-radius:11px;display:grid;place-items:center;background:var(--glass2);border:1px solid var(--line);color:var(--a2)}
+.lg-card{width:min(400px,100%);padding:30px;border-radius:26px;border:1px solid var(--line);background:rgba(18,20,42,.82);box-shadow:0 40px 90px -30px #000,inset 0 1px 0 rgba(255,255,255,.14)}
+:root[data-theme="light"] .lg-card{background:rgba(255,255,255,.9)}
+.lg-card .cube{width:48px;height:48px;margin-bottom:16px}
+.lg-card .cube b{transform-origin:center}
+.lg-card h2{margin:0 0 4px;font-size:24px}
+.pwrap{position:relative}
+.pwrap .in{padding-right:48px;font-size:16px;-webkit-user-select:text;user-select:text}
+.pwrap button{position:absolute;right:6px;top:50%;transform:translateY(-50%);width:38px;height:38px;border:0;background:none;color:var(--t2);cursor:pointer;border-radius:10px;display:grid;place-items:center}
+.pwrap button:hover{background:var(--glass2);color:var(--t1)}
+#lg-err{min-height:20px;color:var(--bad);font-size:13px;margin-top:10px}
+.shake{animation:shake .45s}
+@keyframes shake{20%,60%{transform:translateX(-9px)}40%,80%{transform:translateX(9px)}}
+.spin{width:16px;height:16px;border-radius:50%;border:2px solid rgba(255,255,255,.4);border-top-color:#fff;animation:rot .7s linear infinite}
+@keyframes rot{to{transform:rotate(360deg)}}
+@media(max-width:820px){.lg-hero{display:none}}
 .hide{display:none!important}
 .empty{text-align:center;padding:44px 20px;color:var(--t2)}
 .spark{width:100%;height:120px;display:block}
@@ -178,12 +195,27 @@ textarea.in{resize:vertical;font-family:var(--mono);font-size:12.5px;line-height
 <div id="toasts"></div>
 
 <div id="login" class="hide">
-  <div class="g">
+  <div class="lg-hero">
+    <div class="cube" style="width:56px;height:56px"><div><b></b><b></b><b></b><b></b><b></b><b></b></div></div>
+    <h1>MC Host<br>Control Center</h1>
+    <p>আপনার Minecraft বটগুলো এক জায়গা থেকে চালান, দেখুন ও AI দিয়ে আপডেট করুন।</p>
+    <div class="lg-feat" id="lg-feat"></div>
+  </div>
+  <div class="lg-card">
     <div class="cube"><div><b></b><b></b><b></b><b></b><b></b><b></b></div></div>
-    <h2 style="margin:0 0 4px">MC Host</h2>
+    <h2>স্বাগতম</h2>
     <p class="mut" style="margin:0 0 20px">অ্যাডমিন পাসওয়ার্ড দিয়ে প্রবেশ করুন</p>
-    <input id="pw" class="in" type="password" placeholder="পাসওয়ার্ড" autocomplete="current-password">
-    <button id="lg" class="btn pri" style="width:100%;margin-top:14px;justify-content:center">প্রবেশ</button>
+    <form id="lgf" autocomplete="on" novalidate>
+      <input type="text" name="username" value="admin" autocomplete="username" style="display:none" tabindex="-1" aria-hidden="true">
+      <div class="pwrap">
+        <input id="pw" name="password" class="in" type="password" placeholder="পাসওয়ার্ড" autocomplete="current-password" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="go">
+        <button type="button" id="pwt" aria-label="দেখান"></button>
+      </div>
+      <div id="lg-caps" class="dim hide" style="color:var(--warn);margin-top:8px">Caps Lock চালু আছে</div>
+      <div id="lg-err"></div>
+      <button id="lg" type="submit" class="btn pri" style="width:100%;margin-top:6px;justify-content:center;padding:13px">প্রবেশ</button>
+    </form>
+    <div id="lg-hint" class="dim" style="margin-top:16px;line-height:1.6;text-align:center"></div>
   </div>
 </div>
 
@@ -196,7 +228,7 @@ textarea.in{resize:vertical;font-family:var(--mono);font-size:12.5px;line-height
     <button class="nv" id="out"></button>
   </aside>
   <main>
-    <header><h2 id="title"></h2><span id="hdr"></span></header>
+    <header><h2 id="title"></h2><span id="hdr"></span><button class="btn sm" id="pal" title="Ctrl+K"></button></header>
     <div id="view"></div>
   </main>
   <div class="mnav g" id="mnav"></div>
@@ -230,6 +262,13 @@ const P = {
   undo:'<path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 010 12h-3"/>',
   link:'<path d="M10 14a4 4 0 005.7 0l3-3a4 4 0 00-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 00-5.7 0l-3 3a4 4 0 005.7 5.7l1-1"/>',
   check:'<path d="M5 12.5l4.5 4.5L19 7"/>',x:'<path d="M6 6l12 12M18 6L6 18"/>',
+  eye:'<path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
+  eyeoff:'<path d="M3 3l18 18M10.6 5.1A9.7 9.7 0 0112 5c6 0 10 7 10 7a17 17 0 01-3.2 3.9M6.2 6.3C3.5 8.2 2 12 2 12s4 7 10 7a9.6 9.6 0 004.2-1"/><path d="M9.9 9.9a3 3 0 004.2 4.2"/>',
+  search:'<circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/>',
+  copy:'<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 00-2-2H6a2 2 0 00-2 2v8a2 2 0 002 2h2"/>',
+  down:'<path d="M12 4v11M7 11l5 5 5-5M5 20h14"/>',
+  up:'<path d="M12 20V9M7 13l5-5 5 5M5 4h14"/>',
+  key:'<circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M16 7l3 3"/>',
   ram:'<rect x="3" y="7" width="18" height="10" rx="2"/><path d="M7 11v2M11 11v2M15 11v2M6 17v3M18 17v3"/>'
 };
 const ic = (n, cls = '') => `<svg class="i ${cls}" viewBox="0 0 24 24">${P[n] || ''}</svg>`;
@@ -239,7 +278,9 @@ const $ = (s, el = document) => el.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const fmt = (ms) => { const t = Math.max(0, Math.floor(ms / 1000)), d = Math.floor(t / 86400), h = Math.floor(t % 86400 / 3600), m = Math.floor(t % 3600 / 60), s = t % 60; return d ? `${d}দিন ${h}ঘ` : h ? `${h}ঘ ${m}মি` : m ? `${m}মি ${s}সে` : `${s}সে`; };
 async function api(path, method = 'GET', body) {
-  const r = await fetch('/api' + path, { method, headers: body ? { 'Content-Type': 'application/json' } : undefined, body: body ? JSON.stringify(body) : undefined });
+  const headers = {}; if (body) headers['Content-Type'] = 'application/json';
+  try { const tk = localStorage.getItem('mch-token'); if (tk) headers['x-mch-token'] = tk; } catch { /* ignore */ }
+  const r = await fetch('/api' + path, { method, headers, body: body ? JSON.stringify(body) : undefined, credentials: 'same-origin' });
   const j = await r.json().catch(() => ({ ok: false, error: 'সার্ভার উত্তর দেয়নি' }));
   if (r.status === 401 && path !== '/login') showLogin();
   return j;
@@ -281,8 +322,9 @@ function buildNav() {
   document.querySelectorAll('[data-p]').forEach((b) => (b.onclick = () => go(b.dataset.p)));
 }
 function go(p, botId) { page = p; if (botId) { sel = botId; tab = 'overview'; } if (p === 'bots' && !botId) sel = null; buildNav(); render(true); }
-function showLogin() { $('#app').classList.add('hide'); $('#login').classList.remove('hide'); $('#pw').focus(); }
-async function refresh() { const j = await api('/state'); if (!j.ok) return; S = j; if (!$('#app').classList.contains('hide')) { header(); render(false); } }
+function showLogin() { $('#app').classList.add('hide'); $('#login').classList.remove('hide'); try { localStorage.removeItem('mch-token'); } catch { /* ignore */ } if (window.loginInfo) loginInfo(); setTimeout(() => $('#pw').focus(), 50); }
+async function refresh() { const j = await api('/state'); if (!j.ok) return; if (S && S.feed) j.feed = S.feed; S = j; if (page === 'dash') { const f = await api('/feed'); if (f.ok) S.feed = f.feed; } if (!$('#app').classList.contains('hide')) { header(); render(false); } }
+setInterval(() => { const c = $('#clk'); if (c) c.textContent = new Date().toLocaleTimeString('bn-BD'); }, 1000);
 function header() {
   $('#title').textContent = TITLES[page] + (page === 'bots' && sel ? '' : '');
   const f = S.fleet; $('#hdr').innerHTML = `<span class="pill"><span class="dot" style="background:var(--ok)"></span>${f.online}/${f.total} অনলাইন</span>`;
@@ -300,27 +342,51 @@ function render(force) {
   v.innerHTML = ({ dash: vDash, bots: vBots, analyze: vAnalyze, ai: vAi, tg: vTg, set: vSet })[page]();
   bind(); v.scrollTop = force ? 0 : scroll;
 }
-function live() { document.querySelectorAll('[data-live]').forEach((el) => { const b = S.bots.find((x) => x.id === el.dataset.live); if (b && el.dataset.k === 'pill') el.innerHTML = pill(b.snap.state); }); }
+function live() { const c = $('#clk'); if (c) c.textContent = new Date().toLocaleTimeString('bn-BD'); document.querySelectorAll('[data-live]').forEach((el) => { const b = S.bots.find((x) => x.id === el.dataset.live); if (b && el.dataset.k === 'pill') el.innerHTML = pill(b.snap.state); }); }
 
 function tile(lbl, val, sub, icon, color) { return `<div class="g tile tilt"><div class="orb" style="background:${color}"></div><div class="lbl">${ic(icon)}${lbl}</div><div class="val">${val}</div><div class="sub">${sub}</div></div>`; }
 
+const EV = { start: 'চালু হচ্ছে', online: 'অনলাইন', offline: 'অফলাইন', kick: 'কিক', retry: 'রিট্রাই', watchdog: 'ওয়াচডগ', stop: 'বন্ধ' };
+function donut(cnt, total) {
+  const cols = { online: 'var(--ok)', starting: 'var(--warn)', reconnecting: '#ff8a4a', stopped: 'var(--t3)' }, R = 52, C = 2 * Math.PI * R;
+  let off = 0, segs = '';
+  if (total) for (const k of Object.keys(cols)) { const len = cnt[k] / total * C; if (len) { segs += `<circle cx="70" cy="70" r="${R}" fill="none" stroke="${cols[k]}" stroke-width="16" stroke-dasharray="${Math.max(1, len - 3)} ${C}" stroke-dashoffset="${-off}" stroke-linecap="round"/>`; off += len; } }
+  return `<div class="row" style="gap:20px"><svg width="140" height="140" viewBox="0 0 140 140" style="flex:none"><g transform="rotate(-90 70 70)"><circle cx="70" cy="70" r="${R}" fill="none" stroke="rgba(255,255,255,.08)" stroke-width="16"/>${segs}</g><text x="70" y="70" text-anchor="middle" dominant-baseline="central" fill="currentColor" font-size="30" font-weight="700">${total}</text></svg>
+  <div class="col" style="gap:8px">${Object.keys(cols).map((k) => `<div class="row" style="gap:8px"><i class="dot" style="background:${cols[k]}"></i><span class="mut" style="flex:1">${STL[k]}</span><b>${cnt[k]}</b></div>`).join('')}</div></div>`;
+}
 function vDash() {
-  const f = S.fleet, bots = S.bots, h = S.history;
+  const f = S.fleet, bots = S.bots, h = S.history, cnt = { online: 0, starting: 0, reconnecting: 0, stopped: 0 };
+  bots.forEach((b) => cnt[b.snap.state]++);
   const avg = bots.length ? Math.round(bots.reduce((a, b) => a + b.snap.health, 0) / bots.length) : 0;
   const crashes = bots.reduce((a, b) => a + ((b.snap.stats || {}).crashes || 0), 0);
-  return `<div class="grid g4">
+  const hr = new Date().getHours(), greet = hr < 5 ? 'শুভ রাত্রি' : hr < 12 ? 'সুপ্রভাত' : hr < 17 ? 'শুভ অপরাহ্ন' : hr < 20 ? 'শুভ সন্ধ্যা' : 'শুভ রাত্রি';
+  const budget = Math.max(1, S.host.limits.mc * 192), memPct = Math.min(100, Math.round(f.mem / budget * 100)), slotPct = Math.round(bots.length / S.host.limits.mc * 100);
+  const feed = (S.feed || []).slice(0, 9);
+  return `<div class="g p tilt" style="margin-bottom:16px;display:flex;align-items:center;gap:20px;flex-wrap:wrap;background:linear-gradient(135deg,rgba(124,92,255,.22),rgba(39,211,255,.1))">
+    <div style="flex:1;min-width:220px"><div class="dim">${greet}</div><div style="font-size:26px;font-weight:700;margin:2px 0">${f.online ? `${f.online}টি বট অনলাইন` : bots.length ? 'কোনো বট অনলাইন নেই' : 'শুরু করা যাক'}</div><div class="mut" id="clk">${new Date().toLocaleTimeString('bn-BD')}</div></div>
+    <div class="row wrap"><button class="btn ok" data-bulk="start">${ic('play')}সব চালু</button><button class="btn" data-bulk="restart">${ic('redo')}সব রিস্টার্ট</button><button class="btn bad" data-bulk="stop">${ic('stop')}সব বন্ধ</button><button class="btn pri" data-new>${ic('plus')}নতুন বট</button></div></div>
+  <div class="grid g4">
     ${tile('অনলাইন বট', `${f.online}<span style="font-size:18px;opacity:.6">/${f.total}</span>`, 'এখন চলমান', 'bot', 'var(--ok)')}
-    ${tile('গড় স্বাস্থ্য', avg, 'সব বটের স্কোর (১০০ এর মধ্যে)', 'shield', 'var(--a1)')}
+    ${tile('গড় স্বাস্থ্য', avg, '১০০ এর মধ্যে', 'shield', 'var(--a1)')}
     ${tile('বটের RAM', `${f.mem}<span style="font-size:16px;opacity:.6"> MB</span>`, `হোস্ট ${S.host.rss} MB`, 'ram', 'var(--a2)')}
-    ${tile('মোট ক্র্যাশ/রিকানেক্ট', crashes, `হোস্ট আপটাইম ${fmt(S.host.uptime)}`, 'bolt', 'var(--a3)')}
+    ${tile('ক্র্যাশ / রিকানেক্ট', crashes, `হোস্ট আপটাইম ${fmt(S.host.uptime)}`, 'bolt', 'var(--a3)')}
   </div>
+  <div class="grid g3" style="margin-top:16px">
+    <div class="g p"><div class="h3">বটের অবস্থা</div>${donut(cnt, bots.length)}</div>
+    <div class="g p"><div class="h3">রিসোর্স ও সীমা</div><div class="col" style="gap:14px">
+      <div><div class="row"><span class="mut" style="flex:1">বট RAM বাজেট</span><b>${memPct}%</b></div><div class="bar"><i style="width:${memPct}%"></i></div></div>
+      <div><div class="row"><span class="mut" style="flex:1">বট স্লট</span><b>${bots.length}/${S.host.limits.mc}</b></div><div class="bar"><i style="width:${slotPct}%"></i></div></div>
+      <div class="row wrap"><span class="pill">${ic('spark')}${S.ai.ready ? 'AI চালু' : 'AI বন্ধ'}</span><span class="pill">${ic('send')}টেলিগ্রাম ${S.tg.filter((t) => t.running).length}/${S.tg.length}</span><span class="pill">${ic('link')}ওয়েবহুক ${S.webhook ? 'চালু' : 'বন্ধ'}</span></div>
+      <div class="dim">${esc(S.host.platform)} &middot; পোর্ট ${S.host.port} &middot; ডাটা ${esc(S.host.mode)}</div></div></div>
+    <div class="g p"><div class="h3">লাইভ ঘটনা</div>${feed.length ? `<div class="col" style="gap:9px">${feed.map((e) => `<div class="row" style="gap:10px"><i class="dot" style="background:${e.type === 'online' ? 'var(--ok)' : ['offline', 'kick', 'watchdog'].includes(e.type) ? 'var(--bad)' : 'var(--warn)'}"></i><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><b>${esc(e.bot)}</b> <span class="mut">${EV[e.type] || esc(e.type)}</span></span><span class="dim">${new Date(e.t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span></div>`).join('')}</div>` : '<div class="mut">এখনো কোনো ঘটনা নেই</div>'}</div>
+  </div>
+  ${bots.length ? `<div class="g p" style="margin-top:16px"><div class="h3">সাম্প্রতিক আপটাইম স্ট্রিপ (প্রতি ঘর ১ মিনিট)</div><div class="col" style="gap:12px">${bots.map((b) => { const st = (b.snap.strip || '').padStart(120, '.'); const col = { o: 'var(--ok)', s: 'var(--warn)', r: '#ff8a4a', x: 'var(--t3)', '.': 'rgba(255,255,255,.06)' }; return `<div class="row" style="gap:12px"><b style="width:110px;overflow:hidden;text-overflow:ellipsis">${esc(b.username)}</b><div style="flex:1;display:grid;grid-template-columns:repeat(120,1fr);gap:1px;height:16px">${[...st].map((c) => `<i style="background:${col[c]};border-radius:2px"></i>`).join('')}</div></div>`; }).join('')}</div></div>` : ''}
   <div class="grid g2" style="margin-top:16px">
     <div class="g p"><div class="h3">অনলাইন বট (সময়ের সাথে)</div>${spark(h, 'online', '#35e6a0')}</div>
-    <div class="g p"><div class="h3">বটের মেমরি ব্যবহার (MB)</div>${spark(h, 'mem', '#27d3ff')}</div>
+    <div class="g p"><div class="h3">বটের মেমরি (MB)</div>${spark(h, 'mem', '#27d3ff')}</div>
   </div>
   <div class="h3" style="margin:26px 4px 12px">বট ফ্লিট</div>
-  ${bots.length ? `<div class="grid g3">${bots.map(botCard).join('')}</div>` : `<div class="g empty">${ic('bot')}<p>এখনো কোনো বট নেই</p><button class="btn pri" data-new>${ic('plus')}নতুন বট যোগ করুন</button></div>`}
-  <div class="g p" style="margin-top:16px"><div class="h3">AI</div><div class="row wrap"><span class="pill">${ic('spark')}${S.ai.ready ? 'Mistral ' + esc(S.ai.model) : 'বন্ধ'}</span><span class="pill">${ic('send')}টেলিগ্রাম ${S.tg.filter((t) => t.running).length}/${S.tg.length}</span><span class="pill">${ic('chip')}${esc(S.host.platform)} · পোর্ট ${S.host.port}</span><span class="pill">ডাটা: ${esc(S.host.mode)}</span></div></div>`;
+  ${bots.length ? `<div class="grid g3">${bots.map(botCard).join('')}</div>` : `<div class="g empty">${ic('bot')}<p>এখনো কোনো বট নেই</p><button class="btn pri" data-new>${ic('plus')}নতুন বট যোগ করুন</button></div>`}`;
 }
 
 function botCard(b) {
@@ -370,8 +436,9 @@ function vDetail(b) {
       <div><label>গেম-নাম</label><input class="in" id="c-u" value="${esc(b.username)}"></div>
       <div class="row"><div style="flex:1"><label>সার্ভার</label><input class="in" id="c-h" value="${esc(b.host)}"></div><div style="width:110px"><label>পোর্ট</label><input class="in" id="c-p" type="number" value="${b.port}"></div></div>
       <div><label>ভার্সন (ফাঁকা = অটো)</label><input class="in" id="c-v" value="${esc(b.version)}" placeholder="1.20.4"></div>
+      <div><label>অটো-রিস্টার্ট (ঘণ্টা, 0 = বন্ধ)</label><input class="in" id="c-r" type="number" min="0" max="168" value="${b.autoRestartHours || 0}"></div>
       <div class="row"><div style="flex:1">টেলিগ্রাম নোটিফিকেশন</div><div class="sw ${b.notify ? 'on' : ''}" id="c-n"></div></div>
-      <div class="row"><button class="btn pri" id="c-s">${ic('check')}সেভ</button><div class="sp"></div><button class="btn bad" id="c-d">${ic('trash')}বট মুছুন</button></div></div></div>`;
+      <div class="row"><button class="btn pri" id="c-s">${ic('check')}সেভ</button><button class="btn" id="c-c">${ic('copy')}ক্লোন</button><div class="sp"></div><button class="btn bad" id="c-d">${ic('trash')}বট মুছুন</button></div></div></div>`;
   return `<div class="row wrap" style="margin-bottom:14px"><button class="btn sm" data-back>${ic('undo')}সব বট</button><b style="font-size:20px">${esc(b.username)}</b><span data-live="${b.id}" data-k="pill">${pill(s.state)}</span><span class="dim">${esc(b.host)}:${b.port}</span></div>
   <div class="tabs">${tabs.map(([k, t]) => `<button class="tab ${tab === k ? 'on' : ''}" data-tab="${k}">${t}</button>`).join('')}</div>${body}`;
 }
@@ -419,7 +486,13 @@ function vSet() {
     <div class="dim">key console.mistral.ai থেকে নিন। মডেল লিস্ট key দিয়ে লাইভ লোড হয়।</div></div></div>
   <div class="g p"><div class="h3">হোস্ট তথ্য</div><div class="col" style="gap:8px">
     ${[['প্ল্যাটফর্ম', h.platform], ['শোনা পোর্ট', '0.0.0.0:' + h.port], ['Node', h.node], ['ডাটা মোড', h.mode], ['হোস্ট RAM', h.rss + ' MB'], ['CPU', h.cpus], ['আপটাইম', fmt(h.uptime)], ['বট সীমা', h.limits.mc]].map(([k, v]) => `<div class="row"><span class="mut" style="flex:1">${k}</span><b>${esc(v)}</b></div>`).join('')}
-    <div class="dim" style="margin-top:6px">Wispbyte-এ প্যানেলে দেখানো পোর্টটি PORT (বা SERVER_PORT) হিসেবে সেট থাকলে সার্ভার 0.0.0.0-তে সেই পোর্টে চলে।</div></div></div></div>`;
+    <div class="dim" style="margin-top:6px">Wispbyte-এ প্যানেলে দেখানো পোর্টটি PORT (বা SERVER_PORT) হিসেবে সেট থাকলে সার্ভার 0.0.0.0-তে সেই পোর্টে চলে।</div></div></div></div>
+  <div class="grid g2" style="margin-top:16px">
+  <div class="g p"><div class="h3">ওয়েবহুক নোটিফিকেশন</div><div class="col"><div><label>Discord বা যেকোনো https ওয়েবহুক URL (অনলাইন/অফলাইন ঘটনায় বার্তা যায়)</label><input class="in" id="wh" placeholder="${S.webhook ? 'সেট আছে (নতুন দিলে বদলাবে)' : 'https://discord.com/api/webhooks/...'}"></div><div class="row wrap"><button class="btn pri" id="whs">${ic('check')}সেভ</button>${S.webhook ? `<button class="btn bad" id="whc">${ic('trash')}মুছুন</button>` : ''}</div></div></div>
+  <div class="g p"><div class="h3">পাসওয়ার্ড বদলান</div><div class="col"><input class="in" id="pw0" type="password" placeholder="বর্তমান পাসওয়ার্ড" autocomplete="current-password"><input class="in" id="pw1" type="password" placeholder="নতুন পাসওয়ার্ড (কমপক্ষে ৬)" autocomplete="new-password"><button class="btn pri" id="pws" style="align-self:flex-start">${ic('key')}বদলান</button></div></div>
+  <div class="g p"><div class="h3">ব্যাকআপ</div><div class="row wrap"><a class="btn" href="/api/backup" download>${ic('down')}ব্যাকআপ নামান</a><button class="btn" id="rst">${ic('up')}রিস্টোর</button><input type="file" id="rstf" accept="application/json" class="hide"></div><div class="dim" style="margin-top:10px">বট, স্ক্রিপ্ট, AI মেমরি ও সেটিংস থাকে। রিস্টোরের পর বটগুলো বন্ধ অবস্থায় আসে।</div></div>
+  </div>
+`;
 }
 
 /* ---------- event binding ---------- */
@@ -428,6 +501,7 @@ function bind() {
   v.querySelectorAll('[data-open]').forEach((el) => (el.onclick = () => go('bots', el.dataset.open)));
   v.querySelectorAll('[data-a]').forEach((el) => (el.onclick = (e) => { e.stopPropagation(); act(`/bots/${el.dataset.id}/${el.dataset.a}`); }));
   v.querySelectorAll('[data-new]').forEach((el) => (el.onclick = newBot));
+  v.querySelectorAll('[data-bulk]').forEach((el) => (el.onclick = () => { const k = el.dataset.bulk; const run = () => act('/bulk/' + k, 'POST', null, 'সম্পন্ন'); k === 'stop' ? confirmBox('সব বট বন্ধ করবেন?', run) : run(); }));
   v.querySelectorAll('[data-back]').forEach((el) => (el.onclick = () => go('bots')));
   v.querySelectorAll('[data-tab]').forEach((el) => (el.onclick = () => { tab = el.dataset.tab; render(true); }));
   v.querySelectorAll('[data-ai-bot]').forEach((el) => (el.onclick = () => { chatBot = el.dataset.aiBot; go('ai'); }));
@@ -444,7 +518,8 @@ function bind() {
     if (tab === 'analysis') loadAnalysis(b);
     if (tab === 'config') {
       $('#c-n').onclick = (e) => e.currentTarget.classList.toggle('on');
-      $('#c-s').onclick = () => act(`/bots/${b.id}`, 'PATCH', { username: $('#c-u').value.trim(), host: $('#c-h').value.trim(), port: $('#c-p').value, version: $('#c-v').value, notify: $('#c-n').classList.contains('on') }, 'সেভ হয়েছে');
+      $('#c-s').onclick = () => act(`/bots/${b.id}`, 'PATCH', { username: $('#c-u').value.trim(), host: $('#c-h').value.trim(), port: $('#c-p').value, version: $('#c-v').value, notify: $('#c-n').classList.contains('on'), autoRestartHours: $('#c-r').value }, 'সেভ হয়েছে');
+      $('#c-c').onclick = () => { const o = modal(`<h3 style="margin:0 0 14px">ক্লোন</h3><label>নতুন বটের নাম</label><input class="in" id="cl-n" value="${esc(b.username.slice(0, 13))}_2"><div class="row" style="justify-content:flex-end;margin-top:16px"><button class="btn" data-c>বাতিল</button><button class="btn pri" data-s>তৈরি</button></div>`); $('[data-c]', o).onclick = () => o.remove(); $('[data-s]', o).onclick = async () => { const r = await api(`/bots/${b.id}/clone`, 'POST', { username: $('#cl-n').value.trim() }); if (!r.ok) return toast(r.error, 'bad'); o.remove(); await refresh(); toast('ক্লোন তৈরি হয়েছে', 'ok'); go('bots', r.id); }; };
       $('#c-d').onclick = () => confirmBox('বট ও তার স্ক্রিপ্ট মুছে যাবে। নিশ্চিত?', async () => { await act(`/bots/${b.id}`, 'DELETE'); sel = null; render(true); });
     }
   }
@@ -494,25 +569,74 @@ function bindSet() {
   $('#kt').onclick = async () => { const r = await api('/ai/chat', 'POST', { text: 'এক লাইনে বলো তুমি কাজ করছ।' }); r.ok ? toast('AI কাজ করছে: ' + r.reply.slice(0, 80), 'ok') : toast(r.error, 'bad'); };
   if ($('#kc')) $('#kc').onclick = () => confirmBox('API key মুছবেন?', () => act('/settings', 'PUT', { mistralKey: '' }, 'মুছে ফেলা হয়েছে'));
   if (S.ai.ready) load();
+  $('#whs').onclick = () => act('/settings', 'PUT', { webhookUrl: $('#wh').value.trim() }, 'ওয়েবহুক সেভ হয়েছে').then(() => render(true));
+  if ($('#whc')) $('#whc').onclick = () => act('/settings', 'PUT', { webhookUrl: '' }, 'মুছে ফেলা হয়েছে').then(() => render(true));
+  $('#pws').onclick = async () => { const r = await api('/password', 'POST', { current: $('#pw0').value, next: $('#pw1').value }); r.ok ? (toast('পাসওয়ার্ড বদলেছে', 'ok'), $('#pw0').value = $('#pw1').value = '') : toast(r.error, 'bad'); };
+  $('#rst').onclick = () => $('#rstf').click();
+  $('#rstf').onchange = (e) => { const f = e.target.files[0]; if (!f) return; confirmBox('বর্তমান বট ও সেটিংস ব্যাকআপ দিয়ে বদলে যাবে। নিশ্চিত?', async () => { try { const j = JSON.parse(await f.text()); const r = await api('/restore', 'POST', j); r.ok ? toast(r.bots + 'টি বট ফিরেছে', 'ok') : toast(r.error, 'bad'); await refresh(); render(true); } catch { toast('ফাইল পড়া যায়নি', 'bad'); } }); };
 }
+
 
 function newBot() {
   const o = modal(`<h3 style="margin:0 0 16px">নতুন বট</h3><div class="col">
     <div><label>গেম-নাম (৩-১৬ অক্ষর: A-Z 0-9 _)</label><input class="in" id="n-u"></div>
     <div class="row"><div style="flex:1"><label>সার্ভার (host অথবা host:port)</label><input class="in" id="n-h" placeholder="play.example.com"></div><div style="width:100px"><label>পোর্ট</label><input class="in" id="n-p" type="number" placeholder="25565"></div></div>
     <div><label>ভার্সন (ঐচ্ছিক)</label><input class="in" id="n-v" placeholder="1.20.4"></div>
-    <div class="dim">ডিফল্ট স্ক্রিপ্ট দিয়ে তৈরি হবে। পরে স্ক্রিপ্ট ট্যাব বা AI সহায়ক দিয়ে বদলানো যাবে।</div>
+    <div><label>আচরণ টেমপ্লেট</label><select class="in" id="n-t"><option value="default">লোড হচ্ছে...</option></select><div class="dim" id="n-td" style="margin-top:6px"></div></div>
     <div class="row" style="justify-content:flex-end"><button class="btn" data-c>বাতিল</button><button class="btn pri" data-s>${ic('plus')}তৈরি করুন</button></div></div>`);
+  let tpls = [];
+  api('/templates').then((r) => { if (!r.ok) return; tpls = r.templates; $('#n-t', o).innerHTML = tpls.map((t) => `<option value="${t.key}">${esc(t.name)}</option>`).join(''); const d = () => ($('#n-td', o).textContent = (tpls.find((t) => t.key === $('#n-t', o).value) || {}).desc || ''); $('#n-t', o).onchange = d; d(); });
   $('[data-c]', o).onclick = () => o.remove();
-  $('[data-s]', o).onclick = async () => { const r = await api('/bots', 'POST', { username: $('#n-u').value.trim(), host: $('#n-h').value.trim(), port: $('#n-p').value, version: $('#n-v').value.trim() }); if (!r.ok) return toast(r.error, 'bad'); o.remove(); await refresh(); await api(`/bots/${r.id}/start`, 'POST'); toast('বট তৈরি হয়ে চালু হচ্ছে', 'ok'); go('bots', r.id); refresh(); };
+  $('[data-s]', o).onclick = async () => { const r = await api('/bots', 'POST', { template: $('#n-t', o).value, username: $('#n-u').value.trim(), host: $('#n-h').value.trim(), port: $('#n-p').value, version: $('#n-v').value.trim() }); if (!r.ok) return toast(r.error, 'bad'); o.remove(); await refresh(); await api(`/bots/${r.id}/start`, 'POST'); toast('বট তৈরি হয়ে চালু হচ্ছে', 'ok'); go('bots', r.id); refresh(); };
   $('#n-u', o).focus();
 }
 
 /* ---------- boot ---------- */
 $('#theme').onclick = () => { const l = document.documentElement.dataset.theme === 'light'; document.documentElement.dataset.theme = l ? 'dark' : 'light'; try { localStorage.setItem('mch-theme', l ? 'dark' : 'light'); } catch { /* ignore */ } buildNav(); };
 $('#out').onclick = async () => { await api('/logout', 'POST'); showLogin(); };
-async function doLogin() { const r = await api('/login', 'POST', { password: $('#pw').value }); if (!r.ok) return toast(r.error, 'bad'); $('#pw').value = ''; start(); }
-$('#lg').onclick = doLogin; $('#pw').onkeydown = (e) => e.key === 'Enter' && doLogin();
+window.loginInfo = null;
+function lgErr(m) { $('#lg-err').textContent = m || ''; if (m) { const c = $('.lg-card'); c.classList.remove('shake'); void c.offsetWidth; c.classList.add('shake'); } }
+async function doLogin() {
+  const btn = $('#lg'), pw = $('#pw').value;
+  if (!pw.trim()) { lgErr('পাসওয়ার্ড লিখুন'); $('#pw').focus(); return; }
+  lgErr(''); btn.disabled = true; btn.innerHTML = '<span class="spin"></span>';
+  const r = await api('/login', 'POST', { password: pw });
+  btn.disabled = false; btn.textContent = 'প্রবেশ';
+  if (!r.ok) { lgErr(r.error || 'লগইন ব্যর্থ'); $('#pw').select(); return; }
+  try { if (r.token) localStorage.setItem('mch-token', r.token); } catch { /* ignore */ }
+  $('#pw').value = ''; start();
+}
+$('#lgf').onsubmit = (e) => { e.preventDefault(); doLogin(); };
+const caps = (e) => { const on = e.getModifierState && e.getModifierState('CapsLock'); $('#lg-caps').classList.toggle('hide', !on); };
+$('#pw').onkeydown = caps; $('#pw').onkeyup = caps;
+const HINTS = { auto: 'ADMIN_PASSWORD সেট করা নেই। সার্ভার কনসোলে ছাপা "অটো পাসওয়ার্ড" দিন (প্রতিবার স্টার্টে আবার দেখানো হয়)।', env: 'পাসওয়ার্ড ADMIN_PASSWORD env থেকে আসছে। ভুলে গেলে env-এর মান দেখুন।', custom: 'পাসওয়ার্ড ড্যাশবোর্ড থেকে বদলানো হয়েছে। ভুলে গেলে ADMIN_PASSWORD env-এ নতুন মান দিয়ে রিস্টার্ট করুন।' };
+window.loginInfo = loginInfo;
+async function loginInfo() { const r = await api('/login-info'); if (!r.ok) return; $('#lg-hint').textContent = HINTS[r.mode] || ''; if (r.wait) lgErr(`অনেকবার ভুল হয়েছে। ${Math.ceil(r.wait / 60)} মিনিট পরে চেষ্টা করুন`); }
+$('#pw').oninput = () => lgErr('');
+$('#pwt').innerHTML = ic('eye');
+$('#pwt').onclick = () => { const p = $('#pw'), show = p.type === 'password'; p.type = show ? 'text' : 'password'; $('#pwt').innerHTML = ic(show ? 'eyeoff' : 'eye'); p.focus(); };
+$('#lg-feat').innerHTML = [['pulse', 'লাইভ ড্যাশবোর্ড ও বিশ্লেষণ'], ['spark', 'Mistral AI দিয়ে স্ক্রিপ্ট আপডেট'], ['shield', 'স্মার্ট রিকানেক্ট ও ওয়াচডগ'], ['send', 'টেলিগ্রাম থেকে সম্পূর্ণ নিয়ন্ত্রণ']].map(([i, t]) => `<div><span>${ic(i)}</span>${t}</div>`).join('');
+
+/* ---------- command palette ---------- */
+function openPalette() {
+  if (!S) return;
+  const items = [...NAV.map(([k, i, t]) => ({ t: t + ' পেজ', i, f: () => go(k) })),
+    ...S.bots.map((b) => ({ t: 'বট: ' + b.username, i: 'bot', f: () => go('bots', b.id) })),
+    { t: 'নতুন বট তৈরি', i: 'plus', f: newBot }, { t: 'সব বট চালু', i: 'play', f: () => act('/bulk/start', 'POST', null, 'সম্পন্ন') },
+    { t: 'সব বট রিস্টার্ট', i: 'redo', f: () => act('/bulk/restart', 'POST', null, 'সম্পন্ন') },
+    { t: 'থিম বদলান', i: 'sun', f: () => $('#theme').click() }, { t: 'লগআউট', i: 'out', f: () => $('#out').click() }];
+  const o = modal(`<div class="row" style="margin-bottom:10px">${ic('search')}<input class="in" id="pq" placeholder="খুঁজুন বা কাজ বাছুন..." autocomplete="off"></div><div class="col scr" id="pl" style="gap:4px;max-height:50vh;overflow:auto"></div>`);
+  let idx = 0, cur = items;
+  const draw = () => { $('#pl', o).innerHTML = cur.map((x, n) => `<button class="nv ${n === idx ? 'on' : ''}" data-n="${n}">${ic(x.i)}<span>${esc(x.t)}</span></button>`).join('') || '<div class="mut" style="padding:10px">কিছু পাওয়া যায়নি</div>'; $('#pl', o).querySelectorAll('[data-n]').forEach((el) => (el.onclick = () => run(Number(el.dataset.n)))); };
+  const run = (n) => { const x = cur[n]; if (x) { o.remove(); x.f(); } };
+  $('#pq', o).oninput = (e) => { const q = e.target.value.toLowerCase(); cur = items.filter((x) => x.t.toLowerCase().includes(q)); idx = 0; draw(); };
+  $('#pq', o).onkeydown = (e) => { if (e.key === 'ArrowDown') { idx = Math.min(cur.length - 1, idx + 1); draw(); e.preventDefault(); } else if (e.key === 'ArrowUp') { idx = Math.max(0, idx - 1); draw(); e.preventDefault(); } else if (e.key === 'Enter') run(idx); else if (e.key === 'Escape') o.remove(); };
+  draw(); $('#pq', o).focus();
+}
+$('#pal').innerHTML = ic('search') + '<span>Ctrl K</span>';
+$('#pal').onclick = openPalette;
+document.addEventListener('keydown', (e) => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k' && !$('#app').classList.contains('hide')) { e.preventDefault(); openPalette(); } });
+
 async function start() {
   const me = await api('/me'); if (!me.ok) return showLogin();
   $('#login').classList.add('hide'); $('#app').classList.remove('hide'); buildNav(); await refresh(); render(true);

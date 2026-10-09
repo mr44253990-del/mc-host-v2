@@ -15,6 +15,7 @@ class Runner extends EventEmitter {
     super();
     this.store = store;
     this.rt = new Map();
+    this.feed = [];
     this._wd = setInterval(() => this._watchdog(), 10000);
     this._wd.unref();
   }
@@ -36,6 +37,7 @@ class Runner extends EventEmitter {
   }
 
   state(id) { return this._rt(id).state; }
+  uptime(id) { const rt = this._rt(id); return rt.onlineSince ? Date.now() - rt.onlineSince : 0; }
   logs(id, n = 20) { return this._rt(id).logs.slice(-n); }
   events(id, n = 40) { return this._rt(id).events.slice(-n); }
 
@@ -71,6 +73,7 @@ class Runner extends EventEmitter {
       lastExit: rt.lastExit,
       info: rt.state === 'online' ? rt.info : null,
       health: bot ? this.health(bot) : 0,
+      strip: (rt.hist || []).join(''),
       stats: st ? { ...st, upMs: st.upMs + (rt.onlineSince ? Date.now() - rt.onlineSince : 0) } : null,
     };
   }
@@ -118,6 +121,8 @@ class Runner extends EventEmitter {
   }
 
   async restart(id) { await this.stop(id); return this.start(id, { user: true }); }
+  startAll() { let n = 0; for (const b of this.store.data.bots) if (this.start(b.id, { user: true }).ok) n++; return n; }
+  async restartAll() { for (const b of this.store.data.bots) if (this.state(b.id) !== 'stopped') await this.restart(b.id); }
   async stopAll(opts) { await Promise.all([...this.rt.keys()].map((id) => this.stop(id, opts))); }
 
   say(id, text) {
@@ -140,12 +145,28 @@ class Runner extends EventEmitter {
     if (rt.logs.length > 300) rt.logs.splice(0, rt.logs.length - 300);
   }
 
-  _ev(rt, type, text) {
-    rt.events.push({ t: Date.now(), type, text: String(text).slice(0, 200) });
+  _ev(rt, type, text, bot) {
+    const e = { t: Date.now(), type, text: String(text).slice(0, 200) };
+    rt.events.push(e);
+    const b = bot || rt._bot;
+    this.feed.push({ ...e, bot: b ? b.username : '', id: b ? b.id : '' });
+    if (this.feed.length > 80) this.feed.splice(0, this.feed.length - 80);
     if (rt.events.length > 100) rt.events.splice(0, rt.events.length - 100);
   }
 
   _watchdog() {
+    this._tick = (this._tick || 0) + 1;
+    for (const b of this.store.data.bots) {
+      const rt = this._rt(b.id);
+      if (this._tick % 6 === 0) { rt.hist = rt.hist || []; rt.hist.push({ online: 'o', starting: 's', reconnecting: 'r', stopped: 'x' }[rt.state]); if (rt.hist.length > 120) rt.hist.shift(); }
+      const h = Number(b.autoRestartHours) || 0;
+      if (h > 0 && rt.state === 'online' && rt.onlineSince && Date.now() - rt.onlineSince > h * 3600000 && !rt.sched) {
+        rt.sched = true;
+        this._log(rt, `নির্ধারিত অটো-রিস্টার্ট (${h} ঘণ্টা)`);
+        this._ev(rt, 'sched', `${h} ঘণ্টা পূর্ণ, রিস্টার্ট`);
+        this.restart(b.id).finally(() => { rt.sched = false; });
+      }
+    }
     for (const [id, rt] of this.rt) {
       if (rt.state === 'online' && rt.proc && rt.lastBeat && Date.now() - rt.lastBeat > WATCHDOG_MS) {
         this._log(rt, 'watchdog: ৬০ সেকেন্ড কোনো সাড়া নেই, প্রসেস রিস্টার্ট');
@@ -159,6 +180,7 @@ class Runner extends EventEmitter {
   }
 
   _spawn(bot, rt) {
+    rt._bot = bot;
     rt.state = 'starting';
     rt.startedAt = Date.now();
     rt.onlineSince = 0;

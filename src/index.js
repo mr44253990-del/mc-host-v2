@@ -11,6 +11,7 @@ const Runner = require('./runner');
 const Ai = require('./ai');
 const Tg = require('./tg');
 const { genId, parseHost, validName } = require('./util');
+const TEMPLATES = require('./templates');
 
 // Wispbyte / Pterodactyl: SERVER_PORT, Render/Heroku/Railway: PORT, নইলে 11336
 const PORT = Number(process.env.PORT || process.env.SERVER_PORT || process.env.APP_PORT || 11336);
@@ -26,15 +27,17 @@ const fail = (res, error, code = 400) => res.status(code).json({ ok: false, erro
 (async () => {
   await store.init();
 
-  // পাসওয়ার্ড: ENV না থাকলে একবার বানিয়ে কনসোলে দেখানো হয় (পরেও একই থাকে)
-  let password = process.env.ADMIN_PASSWORD || store.setting('autoPassword');
-  if (!password) {
-    password = crypto.randomBytes(5).toString('hex');
-    store.setSetting('autoPassword', password);
-    console.log(`[auth] ADMIN_PASSWORD সেট নেই। অটো পাসওয়ার্ড: ${password}`);
-  }
-  const secret = crypto.createHash('sha256').update('mchost|' + password).digest();
-  const sign = (v) => crypto.createHmac('sha256', secret).update(v).digest('hex');
+  // পাসওয়ার্ড: ড্যাশবোর্ডে বদলানো > ENV > অটো। ENV-এর ফাঁকা জায়গা ও উদ্ধৃতি চিহ্ন বাদ দেওয়া হয়
+  const clean = (v) => String(v || '').trim().replace(/^(["'])(.*)\1$/, '$2').trim();
+  const envPw = clean(process.env.ADMIN_PASSWORD);
+  // ড্যাশবোর্ডে পাসওয়ার্ড বদলানোর পর ENV-এর মান পাল্টালে ENV জেতে (ভুলে গেলে এটাই উদ্ধারের উপায়)
+  if (store.setting('customPassword') && envPw && envPw !== store.setting('customPasswordEnv', envPw)) store.setSetting('customPassword', '');
+  let password = clean(store.setting('customPassword')) || envPw || store.setting('autoPassword');
+  if (!password) { password = crypto.randomBytes(5).toString('hex'); store.setSetting('autoPassword', password); }
+  const pwMode = () => (store.setting('customPassword') ? 'custom' : envPw ? 'env' : 'auto');
+  console.log(pwMode() === 'auto' ? `[auth] ADMIN_PASSWORD সেট নেই। অটো পাসওয়ার্ড: ${password}` : `[auth] পাসওয়ার্ড উৎস: ${pwMode() === 'custom' ? 'ড্যাশবোর্ডে বদলানো' : 'ADMIN_PASSWORD env'} (দৈর্ঘ্য ${password.length})`);
+  const sec = () => crypto.createHash('sha256').update('mchost|' + password).digest();
+  const sign = (v) => crypto.createHmac('sha256', sec()).update(v).digest('hex');
   const mkCookie = () => { const exp = Date.now() + 7 * 864e5; return `${exp}.${sign(String(exp))}`; };
   const validCookie = (c) => {
     if (!c) return false;
@@ -43,13 +46,23 @@ const fail = (res, error, code = 400) => res.status(code).json({ ok: false, erro
     const a = Buffer.from(sig), b = Buffer.from(sign(exp));
     return a.length === b.length && crypto.timingSafeEqual(a, b);
   };
-  const cookieOf = (req) => (req.headers.cookie || '').split(';').map((s) => s.trim()).find((s) => s.startsWith('mch='))?.slice(4);
+  const cookieOf = (req) => (req.headers.cookie || '').split(';').map((s) => s.trim()).find((s) => s.startsWith('mch='))?.slice(4) || String(req.headers['x-mch-token'] || '');
+  const setCookie = (req, res, token) => res.setHeader('Set-Cookie', `mch=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${7 * 86400}${req.secure ? '; Secure' : ''}`);
+  const LIMIT = 10, LOCK_MS = 5 * 60000;
   const tries = new Map();
 
   const runner = new Runner(store);
   const ai = new Ai(store, runner);
   const tg = new Tg(store, runner, ai, { maxBots: MAX_MC, defaultScript: DEFAULT_SCRIPT });
-  runner.on('event', (ev) => tg.notifyEvent(ev));
+  runner.on('event', (ev) => {
+    tg.notifyEvent(ev);
+    const url = store.setting('webhookUrl');
+    if (!url || ev.bot.notify === false) return;
+    const txt = ({ online: 'অনলাইন হয়েছে', offline: 'অফলাইন হয়েছে', failing: 'ঢুকতে পারছে না' })[ev.type];
+    if (!txt) return;
+    const body = `MC Host: ${ev.bot.username} ${txt}${ev.reason ? ' (' + String(ev.reason).slice(0, 120) + ')' : ''}`;
+    fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content: body, text: body }), signal: AbortSignal.timeout(8000) }).catch(() => {});
+  });
 
   const app = express();
   app.disable('x-powered-by');
@@ -58,30 +71,34 @@ const fail = (res, error, code = 400) => res.status(code).json({ ok: false, erro
   app.get('/healthz', (req, res) => res.type('text').send('ok'));
 
   // ---------- auth ----------
+  app.get('/api/login-info', (req, res) => {
+    const t = tries.get(req.ip);
+    res.json({ ok: true, mode: pwMode(), wait: t && t.until > Date.now() ? Math.ceil((t.until - Date.now()) / 1000) : 0 });
+  });
   app.post('/api/login', (req, res) => {
     const ip = req.ip;
     const t = tries.get(ip) || { n: 0, until: 0 };
-    if (Date.now() < t.until) return fail(res, 'অনেকবার ভুল হয়েছে, কিছুক্ষণ পরে চেষ্টা করুন', 429);
-    const given = Buffer.from(String(req.body.password || ''));
+    if (Date.now() < t.until) { const w = Math.ceil((t.until - Date.now()) / 1000); return res.status(429).json({ ok: false, wait: w, error: `অনেকবার ভুল হয়েছে। ${Math.ceil(w / 60)} মিনিট পরে চেষ্টা করুন` }); }
+    const given = Buffer.from(clean((req.body || {}).password));
     const real = Buffer.from(password);
     const good = given.length === real.length && crypto.timingSafeEqual(given, real);
     if (!good) {
       t.n++;
-      if (t.n >= 8) { t.until = Date.now() + 10 * 60000; t.n = 0; }
+      if (t.n >= LIMIT) { t.until = Date.now() + LOCK_MS; t.n = 0; }
       tries.set(ip, t);
-      return fail(res, 'পাসওয়ার্ড ভুল', 401);
+      return fail(res, `পাসওয়ার্ড ভুল (আর ${Math.max(0, LIMIT - t.n)}বার চেষ্টা করা যাবে)`, 401);
     }
     tries.delete(ip);
-    const https = req.secure || req.headers['x-forwarded-proto'] === 'https';
-    res.setHeader('Set-Cookie', `mch=${mkCookie()}; HttpOnly; SameSite=${https ? 'None' : 'Lax'}; Path=/; Max-Age=${7 * 86400}${https ? '; Secure' : ''}`);
-    ok(res);
+    const token = mkCookie();
+    setCookie(req, res, token);
+    ok(res, { token });
   });
   app.post('/api/logout', (req, res) => { res.setHeader('Set-Cookie', 'mch=; Max-Age=0; Path=/'); ok(res); });
   app.get('/api/me', (req, res) => res.json({ ok: validCookie(cookieOf(req)) }));
   app.use('/api', (req, res, next) => (validCookie(cookieOf(req)) ? next() : fail(res, 'লগইন করুন', 401)));
 
   // ---------- state ----------
-  const botView = (b) => ({ id: b.id, username: b.username, host: b.host, port: b.port, version: b.version || '', notify: b.notify !== false, desired: !!b.desired, createdAt: b.createdAt, snap: runner.snapshot(b.id) });
+  const botView = (b) => ({ id: b.id, username: b.username, host: b.host, port: b.port, version: b.version || '', notify: b.notify !== false, autoRestartHours: b.autoRestartHours || 0, desired: !!b.desired, createdAt: b.createdAt, snap: runner.snapshot(b.id) });
   const mask = (k) => (k ? k.slice(0, 4) + '••••' + k.slice(-3) : '');
 
   app.get('/api/state', (req, res) => {
@@ -91,6 +108,7 @@ const fail = (res, error, code = 400) => res.status(code).json({ ok: false, erro
       bots: store.data.bots.map(botView),
       tg: tg.list(),
       ai: { ready: ai.ready(), model: ai.model(), keyMask: mask(ai.key()), fromEnv: !store.setting('mistralKey') && !!process.env.MISTRAL_API_KEY },
+      webhook: !!store.setting('webhookUrl'),
       host: { port: PORT, mode: store.mode, node: process.version, uptime: Date.now() - started, rss: Math.round(process.memoryUsage().rss / 1048576), cpus: os.cpus().length, limits: { mc: MAX_MC, tg: MAX_TG }, platform: process.env.RENDER ? 'Render' : process.env.SERVER_PORT ? 'Wispbyte / Pterodactyl' : 'Generic' },
       history: store.data.history.slice(-90),
     });
@@ -99,7 +117,7 @@ const fail = (res, error, code = 400) => res.status(code).json({ ok: false, erro
   // ---------- bots ----------
   app.post('/api/bots', (req, res) => {
     if (store.data.bots.length >= MAX_MC) return fail(res, `সর্বোচ্চ ${MAX_MC}টি বট চালানো যাবে`);
-    const { username, host: hostRaw, port, version, script } = req.body || {};
+    const { username, host: hostRaw, port, version, script, template } = req.body || {};
     if (!validName(username)) return fail(res, 'নাম ৩-১৬ অক্ষর (A-Z, 0-9, _)');
     const h = parseHost(hostRaw);
     if (!h) return fail(res, 'সার্ভার ঠিকানা সঠিক নয়');
@@ -110,6 +128,8 @@ const fail = (res, error, code = 400) => res.status(code).json({ ok: false, erro
       try { new vm.Script(String(script)); } catch (e) { return fail(res, 'স্ক্রিপ্টে ত্রুটি: ' + e.message); }
       code = String(script);
     }
+    const tpl = TEMPLATES.find((t) => t.key === template);
+    if (tpl && tpl.code && !(script && String(script).trim())) code = tpl.code;
     const bot = { id: genId(), tgBotId: null, username, host: h.host, port: p, version: String(version || '').trim(), notify: true, desired: false, createdAt: Date.now() };
     store.data.bots.push(bot);
     store.writeScript(bot.id, code);
@@ -126,6 +146,7 @@ const fail = (res, error, code = 400) => res.status(code).json({ ok: false, erro
     if (port !== undefined) { const p = Number(port); if (!(p > 0 && p < 65536)) return fail(res, 'পোর্ট সঠিক নয়'); b.port = p; }
     if (version !== undefined) b.version = String(version).trim();
     if (notify !== undefined) b.notify = !!notify;
+    if (req.body.autoRestartHours !== undefined) b.autoRestartHours = Math.max(0, Math.min(168, Number(req.body.autoRestartHours) || 0));
     store.save();
     if (runner.state(b.id) !== 'stopped' && (username || host || port || version !== undefined)) await runner.restart(b.id);
     ok(res);
@@ -159,6 +180,60 @@ const fail = (res, error, code = 400) => res.status(code).json({ ok: false, erro
     ok(res);
   }));
 
+  // ---------- feed / bulk / clone / templates ----------
+  app.get('/api/feed', (req, res) => ok(res, { feed: runner.feed.slice(-40).reverse() }));
+  app.get('/api/templates', (req, res) => ok(res, { templates: TEMPLATES.map((t) => ({ key: t.key, name: t.name, desc: t.desc })) }));
+  app.post('/api/bulk/:action', async (req, res) => {
+    const a = req.params.action;
+    if (a === 'start') return ok(res, { n: runner.startAll() });
+    if (a === 'stop') { await runner.stopAll(); return ok(res); }
+    if (a === 'restart') { await runner.restartAll(); return ok(res); }
+    fail(res, 'অজানা কাজ');
+  });
+  app.post('/api/bots/:id/clone', withBot((b, req, res) => {
+    if (store.data.bots.length >= MAX_MC) return fail(res, `সর্বোচ্চ ${MAX_MC}টি বট চালানো যাবে`);
+    const name = String(req.body.username || '').trim();
+    if (!validName(name)) return fail(res, 'নতুন নামটি সঠিক নয়');
+    const c = { id: genId(), tgBotId: null, username: name, host: b.host, port: b.port, version: b.version || '', notify: b.notify !== false, desired: false, createdAt: Date.now(), autoRestartHours: b.autoRestartHours || 0 };
+    store.data.bots.push(c);
+    store.writeScript(c.id, store.readScript(b.id));
+    ok(res, { id: c.id });
+  }));
+
+  // ---------- backup / password ----------
+  app.get('/api/backup', (req, res) => {
+    const scripts = {};
+    for (const b of store.data.bots) scripts[b.id] = store.readScript(b.id);
+    const data = JSON.parse(JSON.stringify(store.data));
+    delete data.settings.autoPassword; delete data.settings.customPassword; delete data.settings.customPasswordEnv; delete data.history;
+    res.setHeader('Content-Disposition', 'attachment; filename="mc-host-backup.json"');
+    res.json({ v: 2, ts: Date.now(), data, scripts });
+  });
+  app.post('/api/restore', async (req, res) => {
+    const { data, scripts } = req.body || {};
+    if (!data || !Array.isArray(data.bots) || !Array.isArray(data.tgBots)) return fail(res, 'ব্যাকআপ ফাইল সঠিক নয়');
+    for (const [id, code] of Object.entries(scripts || {})) { try { new vm.Script(String(code)); } catch { return fail(res, 'ব্যাকআপের একটি স্ক্রিপ্টে ত্রুটি আছে'); } }
+    await runner.stopAll({ keepDesired: true });
+    const keep = { autoPassword: store.setting('autoPassword'), customPassword: store.setting('customPassword'), customPasswordEnv: store.setting('customPasswordEnv') };
+    store.data.bots = data.bots.slice(0, MAX_MC).map((b) => ({ ...b, desired: false }));
+    store.data.aiMem = data.aiMem || {};
+    store.data.settings = { ...(data.settings || {}), ...keep };
+    for (const b of store.data.bots) store.writeScript(b.id, String((scripts || {})[b.id] || DEFAULT_SCRIPT));
+    store.save();
+    ok(res, { bots: store.data.bots.length });
+  });
+  app.post('/api/password', (req, res) => {
+    const cur = clean(req.body.current), nw = clean(req.body.next);
+    if (cur !== password) return fail(res, 'বর্তমান পাসওয়ার্ড ভুল');
+    if (nw.length < 6) return fail(res, 'নতুন পাসওয়ার্ড কমপক্ষে ৬ অক্ষর');
+    password = nw;
+    store.setSetting('customPassword', nw);
+    store.setSetting('customPasswordEnv', envPw);
+    const token = mkCookie();
+    setCookie(req, res, token);
+    ok(res, { token });
+  });
+
   // ---------- AI ----------
   const aiGuard = (fn) => async (req, res) => { try { await fn(req, res); } catch (e) { fail(res, e.message, 502); } };
   app.get('/api/ai/models', aiGuard(async (req, res) => ok(res, { models: await ai.models(), current: ai.model() })));
@@ -184,7 +259,8 @@ const fail = (res, error, code = 400) => res.status(code).json({ ok: false, erro
 
   // ---------- settings ----------
   app.put('/api/settings', (req, res) => {
-    const { mistralKey, mistralModel } = req.body || {};
+    const { mistralKey, mistralModel, webhookUrl } = req.body || {};
+    if (typeof webhookUrl === 'string') { if (webhookUrl && !/^https:\/\//.test(webhookUrl.trim())) return fail(res, 'ওয়েবহুক URL https:// দিয়ে শুরু হতে হবে'); store.setSetting('webhookUrl', webhookUrl.trim()); }
     if (typeof mistralKey === 'string' && mistralKey.trim()) store.setSetting('mistralKey', mistralKey.trim());
     if (mistralKey === '') store.setSetting('mistralKey', '');
     if (typeof mistralModel === 'string' && mistralModel.trim()) store.setSetting('mistralModel', mistralModel.trim());
@@ -207,6 +283,14 @@ const fail = (res, error, code = 400) => res.status(code).json({ ok: false, erro
   const sample = () => { const f = runner.fleet(); store.pushHistory({ t: Date.now(), online: f.online, total: f.total, mem: f.mem }); };
   setInterval(sample, 30000).unref();
   sample();
+
+  // নির্ধারিত অটো-রিস্টার্ট (মেমরি/ল্যাগ জমা হওয়া ঠেকাতে)
+  setInterval(() => {
+    for (const b of store.data.bots) {
+      const h = b.autoRestartHours;
+      if (h && runner.state(b.id) === 'online' && runner.uptime(b.id) > h * 3600000) { console.log(`[sched] ${b.username} অটো-রিস্টার্ট`); runner.restart(b.id); }
+    }
+  }, 60000).unref();
 
   // keep-alive (Render ফ্রি / অন্য হোস্টে ঘুম ঠেকাতে)
   const selfUrl = process.env.KEEPALIVE_URL || process.env.RENDER_EXTERNAL_URL;

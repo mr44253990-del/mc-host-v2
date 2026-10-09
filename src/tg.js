@@ -124,6 +124,7 @@ class Tg {
     const lines = bots.map((b) => `${DOT[this.runner.state(b.id)]} <b>${esc(b.username)}</b>  <code>${esc(b.host)}:${b.port}</code>`);
     const text = `<b>MC Host</b>\nঅনলাইন ${f.online} / ${f.total}  ·  মেমরি ${f.mem} MB\nAI: ${this.ai.ready() ? esc(this.ai.model()) : 'বন্ধ'}\n\n${lines.join('\n') || 'এখনো কোনো বট নেই।'}`;
     const rows = bots.map((b) => [B(`${DOT[this.runner.state(b.id)]} ${b.username}`, 'b:' + b.id)]);
+    if (bots.length) rows.push([B('সব চালু', 'ba:s'), B('সব রিস্টার্ট', 'ba:r'), B('সব বন্ধ', 'ba:x')]);
     rows.push([B('+ নতুন বট', 'nb'), B('AI সহায়ক', 'ai:_fleet')]);
     rows.push([B('রিফ্রেশ', 'h'), B('অবস্থা', 'st')]);
     return this.show(ctx, text, KB(rows));
@@ -160,6 +161,10 @@ class Tg {
     const uid = ctx.from.id;
     const [k, id, extra] = data.split(':');
     const b = id ? this.store.bot(id) : null;
+    if (k === 'ba') {
+      if (id === 's') this.runner.startAll(); else if (id === 'x') await this.runner.stopAll(); else if (id === 'r') await this.runner.restartAll();
+      return this.home(ctx);
+    }
     if (id && id !== '_fleet' && !b) return this.home(ctx);
 
     switch (k) {
