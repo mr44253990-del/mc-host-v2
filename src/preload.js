@@ -44,9 +44,45 @@ function snapshot(bot) {
   } catch { return {}; }
 }
 
+let FEAT = {};
+try { FEAT = JSON.parse(process.env.MC_FEATURES || '{}'); } catch { /* ignore */ }
+
+// অটোমেশন: জয়েন কমান্ড, অটো-রিপ্লাই রুল, নির্দিষ্ট সময় পরপর মেসেজ, গেম চ্যাট ফরওয়ার্ড
+function features(bot) {
+  const timers = [];
+  const q = [];
+  const say = (t, front) => { if (q.length < 20 && t) (front ? q.unshift(String(t)) : q.push(String(t))); };
+  timers.push(setInterval(() => { const t = q.shift(); if (t) { try { bot.chat(t.slice(0, 250)); } catch { /* ignore */ } } }, 1300));
+  let spawned = false, gc = 0, gcAt = 0;
+  const cd = new Map();
+  bot.on('spawn', () => {
+    if (spawned) return;
+    spawned = true;
+    for (const j of FEAT.join || []) timers.push(setTimeout(() => say(j.cmd, true), Math.max(0, j.delay || 0) * 1000));
+    for (const p of FEAT.periodic || []) timers.push(setInterval(() => say(p.text), Math.max(30, p.every || 300) * 1000));
+  });
+  bot.on('messagestr', (msg) => {
+    const text = String(msg || '').slice(0, 300);
+    const now = Date.now();
+    if (now - gcAt > 10000) { gcAt = now; gc = 0; }
+    if (gc++ < 40) send({ t: 'gchat', text });
+    if (text.includes('<' + bot.username + '>') || text.startsWith(bot.username + ':')) return;
+    (FEAT.rules || []).some((r, i) => {
+      let m = null;
+      try { m = r.regex ? text.match(new RegExp(r.match, 'i')) : (text.toLowerCase().includes(String(r.match).toLowerCase()) ? [] : null); } catch { m = null; }
+      if (!m || now - (cd.get(i) || 0) < (r.cooldown || 10) * 1000) return false;
+      cd.set(i, now);
+      say(String(r.reply).replace(/\{bot\}/g, bot.username).replace(/\$(\d)/g, (_, n) => (m && m[n]) || ''));
+      return true;
+    });
+  });
+  bot.once('end', () => timers.forEach((t) => { clearTimeout(t); clearInterval(t); }));
+}
+
 function attach(bot) {
   let timer = null;
   current = bot;
+  features(bot);
   const push = () => send({ t: 'info', info: snapshot(bot) });
   bot.on('spawn', () => {
     send({ t: 'state', state: 'online' });

@@ -12,12 +12,15 @@ const Ai = require('./ai');
 const Tg = require('./tg');
 const { genId, parseHost, validName } = require('./util');
 const TEMPLATES = require('./templates');
+const Workers = require('./workers');
+const WK_TEMPLATES = require('./worker-templates');
 
 // Wispbyte / Pterodactyl: SERVER_PORT, Render/Heroku/Railway: PORT, নইলে 11336
 const PORT = Number(process.env.PORT || process.env.SERVER_PORT || process.env.APP_PORT || 11336);
 const HOST = '0.0.0.0';
 const MAX_MC = Number(process.env.MAX_MC_BOTS) || 5;
 const MAX_TG = Number(process.env.MAX_TG_BOTS) || 3;
+const MAX_WK = Number(process.env.MAX_WORKERS) || 10;
 const DEFAULT_SCRIPT = fs.readFileSync(path.join(__dirname, 'default-bot.js'), 'utf8');
 const started = Date.now();
 
@@ -64,9 +67,17 @@ const fail = (res, error, code = 400) => res.status(code).json({ ok: false, erro
     fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content: body, text: body }), signal: AbortSignal.timeout(8000) }).catch(() => {});
   });
 
+  const workers = new Workers(store, { max: MAX_WK });
+
   const app = express();
   app.disable('x-powered-by');
   app.set('trust proxy', true);
+  // Worker পাবলিক URL: /w/<slug>/...  (লগইন লাগে না, Cloudflare Workers-এর মতো)
+  const rawBody = express.raw({ type: () => true, limit: '1mb' });
+  const wkServe = (req, res) => workers.serve(req, res).catch((e) => { console.error('[worker]', e.message); if (!res.headersSent) res.status(500).type('text').send('Worker error'); });
+  app.all('/w/:slug', rawBody, wkServe);
+  app.all('/w/:slug/*', rawBody, wkServe);
+
   app.use(express.json({ limit: '1mb' }));
   app.get('/healthz', (req, res) => res.type('text').send('ok'));
 
@@ -98,7 +109,7 @@ const fail = (res, error, code = 400) => res.status(code).json({ ok: false, erro
   app.use('/api', (req, res, next) => (validCookie(cookieOf(req)) ? next() : fail(res, 'লগইন করুন', 401)));
 
   // ---------- state ----------
-  const botView = (b) => ({ id: b.id, username: b.username, host: b.host, port: b.port, version: b.version || '', notify: b.notify !== false, autoRestartHours: b.autoRestartHours || 0, desired: !!b.desired, createdAt: b.createdAt, snap: runner.snapshot(b.id) });
+  const botView = (b) => ({ id: b.id, username: b.username, host: b.host, port: b.port, version: b.version || '', notify: b.notify !== false, autoRestartHours: b.autoRestartHours || 0, joinCmds: b.joinCmds || [], rules: b.rules || [], periodic: b.periodic || [], desired: !!b.desired, createdAt: b.createdAt, snap: runner.snapshot(b.id) });
   const mask = (k) => (k ? k.slice(0, 4) + '••••' + k.slice(-3) : '');
 
   app.get('/api/state', (req, res) => {
@@ -109,6 +120,7 @@ const fail = (res, error, code = 400) => res.status(code).json({ ok: false, erro
       tg: tg.list(),
       ai: { ready: ai.ready(), model: ai.model(), keyMask: mask(ai.key()), fromEnv: !store.setting('mistralKey') && !!process.env.MISTRAL_API_KEY },
       webhook: !!store.setting('webhookUrl'),
+      workers: { count: workers.all().length, running: workers.all().filter((w) => workers.view(w).state === 'running').length },
       host: { port: PORT, mode: store.mode, node: process.version, uptime: Date.now() - started, rss: Math.round(process.memoryUsage().rss / 1048576), cpus: os.cpus().length, limits: { mc: MAX_MC, tg: MAX_TG }, platform: process.env.RENDER ? 'Render' : process.env.SERVER_PORT ? 'Wispbyte / Pterodactyl' : 'Generic' },
       history: store.data.history.slice(-90),
     });
@@ -139,6 +151,20 @@ const fail = (res, error, code = 400) => res.status(code).json({ ok: false, erro
 
   const withBot = (fn) => (req, res) => { const b = store.bot(req.params.id); return b ? fn(b, req, res) : fail(res, 'বট পাওয়া যায়নি', 404); };
 
+  const S_ = (v, n) => String(v ?? '').slice(0, n);
+  const N_ = (v, lo, hi, d) => { const x = Number(v); return Number.isFinite(x) ? Math.max(lo, Math.min(hi, x)) : d; };
+  const arr = (a, n) => (Array.isArray(a) ? a.slice(0, n) : []);
+  const cleanFeatures = (body) => {
+    const out = {};
+    if (body.joinCmds !== undefined) out.joinCmds = arr(body.joinCmds, 10).map((x) => ({ cmd: S_(x.cmd, 200).trim(), delay: N_(x.delay, 0, 300, 3) })).filter((x) => x.cmd);
+    if (body.rules !== undefined) {
+      out.rules = arr(body.rules, 20).map((x) => ({ match: S_(x.match, 100).trim(), reply: S_(x.reply, 200).trim(), regex: !!x.regex, cooldown: N_(x.cooldown, 1, 3600, 10) })).filter((x) => x.match && x.reply);
+      for (const r of out.rules) if (r.regex) { try { new RegExp(r.match, 'i'); } catch { throw new Error('Regex সঠিক নয়: ' + r.match); } }
+    }
+    if (body.periodic !== undefined) out.periodic = arr(body.periodic, 10).map((x) => ({ text: S_(x.text, 200).trim(), every: N_(x.every, 30, 86400, 300) })).filter((x) => x.text);
+    return out;
+  };
+
   app.patch('/api/bots/:id', withBot(async (b, req, res) => {
     const { username, host, port, version, notify } = req.body || {};
     if (username !== undefined) { if (!validName(username)) return fail(res, 'নাম সঠিক নয়'); b.username = username; }
@@ -147,8 +173,11 @@ const fail = (res, error, code = 400) => res.status(code).json({ ok: false, erro
     if (version !== undefined) b.version = String(version).trim();
     if (notify !== undefined) b.notify = !!notify;
     if (req.body.autoRestartHours !== undefined) b.autoRestartHours = Math.max(0, Math.min(168, Number(req.body.autoRestartHours) || 0));
+    let feat = {};
+    try { feat = cleanFeatures(req.body || {}); } catch (e) { return fail(res, e.message); }
+    Object.assign(b, feat);
     store.save();
-    if (runner.state(b.id) !== 'stopped' && (username || host || port || version !== undefined)) await runner.restart(b.id);
+    if (runner.state(b.id) !== 'stopped' && (username || host || port || version !== undefined || Object.keys(feat).length)) await runner.restart(b.id);
     ok(res);
   }));
   app.delete('/api/bots/:id', withBot(async (b, req, res) => { await runner.stop(b.id); store.removeBot(b.id); ok(res); }));
@@ -156,7 +185,7 @@ const fail = (res, error, code = 400) => res.status(code).json({ ok: false, erro
   app.post('/api/bots/:id/stop', withBot(async (b, req, res) => { await runner.stop(b.id); ok(res); }));
   app.post('/api/bots/:id/restart', withBot(async (b, req, res) => { await runner.restart(b.id); ok(res); }));
   app.post('/api/bots/:id/say', withBot((b, req, res) => (runner.say(b.id, String(req.body.text || '').trim()) ? ok(res) : fail(res, 'বট অনলাইন নেই'))));
-  app.get('/api/bots/:id/logs', withBot((b, req, res) => ok(res, { logs: runner.logs(b.id, 200) })));
+  app.get('/api/bots/:id/logs', withBot((b, req, res) => ok(res, { logs: runner.logs(b.id, 200), chat: runner.chatLog(b.id) })));
   app.get('/api/bots/:id/analysis', withBot((b, req, res) => ok(res, { snap: runner.snapshot(b.id), events: runner.events(b.id, 40), notes: store.mem(b.id).notes })));
 
   // ---------- scripts ----------
@@ -206,11 +235,13 @@ const fail = (res, error, code = 400) => res.status(code).json({ ok: false, erro
     for (const b of store.data.bots) scripts[b.id] = store.readScript(b.id);
     const data = JSON.parse(JSON.stringify(store.data));
     delete data.settings.autoPassword; delete data.settings.customPassword; delete data.settings.customPasswordEnv; delete data.history;
+    const wk = {};
+    for (const w of workers.all()) wk[w.id] = workers.readCode(w.id);
     res.setHeader('Content-Disposition', 'attachment; filename="mc-host-backup.json"');
-    res.json({ v: 2, ts: Date.now(), data, scripts });
+    res.json({ v: 3, ts: Date.now(), data, scripts, workers: wk });
   });
   app.post('/api/restore', async (req, res) => {
-    const { data, scripts } = req.body || {};
+    const { data, scripts, workers: wkCodes } = req.body || {};
     if (!data || !Array.isArray(data.bots) || !Array.isArray(data.tgBots)) return fail(res, 'ব্যাকআপ ফাইল সঠিক নয়');
     for (const [id, code] of Object.entries(scripts || {})) { try { new vm.Script(String(code)); } catch { return fail(res, 'ব্যাকআপের একটি স্ক্রিপ্টে ত্রুটি আছে'); } }
     await runner.stopAll({ keepDesired: true });
@@ -219,8 +250,17 @@ const fail = (res, error, code = 400) => res.status(code).json({ ok: false, erro
     store.data.aiMem = data.aiMem || {};
     store.data.settings = { ...(data.settings || {}), ...keep };
     for (const b of store.data.bots) store.writeScript(b.id, String((scripts || {})[b.id] || DEFAULT_SCRIPT));
+    if (Array.isArray(data.workers)) {
+      for (const w of workers.all().slice()) await workers.remove(w.id);
+      for (const w of data.workers.slice(0, MAX_WK)) {
+        const code = String((wkCodes || {})[w.id] || '');
+        if (!code) continue;
+        try { const c = workers.create({ name: w.name, slug: w.slug, code, env: w.env, cronMin: w.cronMin }); workers.get(c.id).enabled = !!w.enabled; } catch { /* skip */ }
+      }
+      workers.autostart();
+    }
     store.save();
-    ok(res, { bots: store.data.bots.length });
+    ok(res, { bots: store.data.bots.length, workers: workers.all().length });
   });
   app.post('/api/password', (req, res) => {
     const cur = clean(req.body.current), nw = clean(req.body.next);
@@ -275,6 +315,49 @@ const fail = (res, error, code = 400) => res.status(code).json({ ok: false, erro
   });
   app.delete('/api/tg/:id', async (req, res) => { await tg.remove(req.params.id); ok(res); });
 
+  // ---------- Workers ----------
+  const guard = (fn) => async (req, res) => { try { await fn(req, res); } catch (e) { fail(res, e.message || 'ত্রুটি'); } };
+  const withWk = (fn) => guard(async (req, res) => { const w = workers.get(req.params.id); if (!w) return fail(res, 'Worker পাওয়া যায়নি', 404); return fn(w, req, res); });
+  const tzOf = (req) => Number(req.query.tz) || 0;
+  const wkFull = (w, tz) => ({ ...workers.view(w), agg: workers.agg([w.id], tz) });
+
+  app.get('/api/worker-templates', (req, res) => ok(res, { templates: WK_TEMPLATES }));
+  app.get('/api/workers', (req, res) => {
+    const tz = tzOf(req);
+    ok(res, { workers: workers.all().map((w) => wkFull(w, tz)), agg: workers.agg(workers.all().map((w) => w.id), tz), max: MAX_WK });
+  });
+  app.post('/api/workers', guard(async (req, res) => {
+    const b = req.body || {};
+    const code = String(b.code || '');
+    if (code.length > 900000) return fail(res, 'worker.js অনেক বড় (সর্বোচ্চ ~৯০০KB)');
+    const w = workers.create({ name: b.name, slug: b.slug, code, env: b.env, cronMin: b.cronMin });
+    const deploy = await workers.deploy(w.id);
+    ok(res, { id: w.id, slug: w.slug, deploy });
+  }));
+  app.get('/api/workers/:id/stats', withWk((w, req, res) => ok(res, { agg: workers.agg([w.id], tzOf(req)), lat: workers.latency(w.id), recent: workers.recent(w.id), w: workers.view(w) })));
+  app.get('/api/workers/:id/logs', withWk((w, req, res) => ok(res, { logs: workers.logs(w.id), w: workers.view(w) })));
+  app.get('/api/workers/:id/code', withWk((w, req, res) => ok(res, { code: workers.readCode(w.id), hasPrev: workers.hasPrev(w.id) })));
+  app.put('/api/workers/:id/code', withWk(async (w, req, res) => {
+    const code = String((req.body || {}).code || '');
+    if (!code.trim()) return fail(res, 'worker.js ফাঁকা');
+    if (code.length > 900000) return fail(res, 'worker.js অনেক বড়');
+    const r = await workers.deploy(w.id, code);
+    r.ok ? ok(res) : res.status(422).json({ ok: false, error: r.error, rolledBack: !!r.rolledBack });
+  }));
+  app.post('/api/workers/:id/rollback', withWk(async (w, req, res) => { const r = await workers.rollback(w.id); r.ok ? ok(res) : fail(res, r.error); }));
+  app.get('/api/workers/:id/env', withWk((w, req, res) => ok(res, { env: (w.env || []).map((e) => ({ key: e.key, secret: !!e.secret, value: e.secret ? '' : e.value, has: e.value !== '' })) })));
+  app.put('/api/workers/:id/env', withWk(async (w, req, res) => {
+    w.env = workers.cleanEnv((req.body || {}).env, w.env);
+    w.updatedAt = Date.now(); store.save();
+    const r = w.enabled ? await workers.start(w.id) : { ok: true };
+    ok(res, { restarted: w.enabled, deploy: r });
+  }));
+  app.patch('/api/workers/:id', withWk(async (w, req, res) => { workers.update(w, req.body || {}); ok(res); }));
+  app.post('/api/workers/:id/start', withWk(async (w, req, res) => { const r = await workers.start(w.id); r.ok ? ok(res) : fail(res, r.error); }));
+  app.post('/api/workers/:id/restart', withWk(async (w, req, res) => { const r = await workers.start(w.id); r.ok ? ok(res) : fail(res, r.error); }));
+  app.post('/api/workers/:id/stop', withWk(async (w, req, res) => { await workers.stop(w.id); ok(res); }));
+  app.delete('/api/workers/:id', withWk(async (w, req, res) => { await workers.remove(w.id); ok(res); }));
+
   // ---------- static ----------
   app.use(express.static(path.join(__dirname, '..', 'public'), { maxAge: 0 }));
   app.use((err, req, res, next) => { console.error('[http]', err.message); if (!res.headersSent) fail(res, 'সার্ভার ত্রুটি', 500); });
@@ -283,14 +366,6 @@ const fail = (res, error, code = 400) => res.status(code).json({ ok: false, erro
   const sample = () => { const f = runner.fleet(); store.pushHistory({ t: Date.now(), online: f.online, total: f.total, mem: f.mem }); };
   setInterval(sample, 30000).unref();
   sample();
-
-  // নির্ধারিত অটো-রিস্টার্ট (মেমরি/ল্যাগ জমা হওয়া ঠেকাতে)
-  setInterval(() => {
-    for (const b of store.data.bots) {
-      const h = b.autoRestartHours;
-      if (h && runner.state(b.id) === 'online' && runner.uptime(b.id) > h * 3600000) { console.log(`[sched] ${b.username} অটো-রিস্টার্ট`); runner.restart(b.id); }
-    }
-  }, 60000).unref();
 
   // keep-alive (Render ফ্রি / অন্য হোস্টে ঘুম ঠেকাতে)
   const selfUrl = process.env.KEEPALIVE_URL || process.env.RENDER_EXTERNAL_URL;
@@ -304,6 +379,7 @@ const fail = (res, error, code = 400) => res.status(code).json({ ok: false, erro
     console.log('============================================');
     tg.launchAll().catch((e) => console.error('[tg]', e.message));
     runner.autostart();
+    workers.autostart();
   });
   server.on('error', (e) => {
     if (e.code === 'EADDRINUSE') console.error(`পোর্ট ${PORT} ব্যবহৃত। Wispbyte প্যানেলে দেখানো পোর্ট দিয়ে PORT env সেট করুন।`);
@@ -316,6 +392,7 @@ const fail = (res, error, code = 400) => res.status(code).json({ ok: false, erro
     if (closing) return; closing = true;
     console.log('বন্ধ হচ্ছে...');
     await runner.stopAll({ keepDesired: true });
+    await workers.stopAll();
     await tg.stopAll();
     await store.flushAll();
     process.exit(0);

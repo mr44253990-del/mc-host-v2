@@ -31,6 +31,7 @@ class Store {
     this.data.settings ||= {};
     this.data.aiMem ||= {};
     this.data.history ||= [];
+    this.data.workers ||= [];
   }
 
   // ---------- settings / AI memory / fleet history ----------
@@ -110,7 +111,9 @@ class Store {
   async _push() {
     const scripts = {};
     for (const b of this.data.bots) scripts[b.id] = this.readScript(b.id);
-    const blob = JSON.stringify({ data: this.data, scripts, ts: Date.now() });
+    const wk = {};
+    for (const w of this.data.workers || []) { try { wk[w.id] = fs.readFileSync(path.join(DIR, 'workers', w.id + '.mjs'), 'utf8'); } catch { /* missing */ } }
+    const blob = JSON.stringify({ data: this.data, scripts, workers: wk, ts: Date.now() });
     if (blob.length > 900000) return console.warn('[store] ডাটা ১MB-এর কাছাকাছি — remote backup বাদ দেওয়া হলো');
     await this._cmd(['SET', REMOTE_KEY, blob]);
   }
@@ -118,8 +121,10 @@ class Store {
   async _restore() {
     const raw = await this._cmd(['GET', REMOTE_KEY]);
     if (!raw) return;
-    const { data, scripts } = JSON.parse(raw);
+    const { data, scripts, workers } = JSON.parse(raw);
     this.data = data;
+    fs.mkdirSync(path.join(DIR, 'workers'), { recursive: true });
+    for (const [id, code] of Object.entries(workers || {})) fs.writeFileSync(path.join(DIR, 'workers', id + '.mjs'), code);
     for (const [id, code] of Object.entries(scripts || {})) fs.writeFileSync(this.scriptPath(id), code);
     this.flush();
     console.log(`[store] remote থেকে ${data.bots.length}টি বট ও ${data.tgBots.length}টি টেলিগ্রাম বট ফিরিয়ে আনা হয়েছে`);

@@ -25,7 +25,7 @@ class Runner extends EventEmitter {
       this.rt.set(id, {
         state: 'stopped', proc: null, timer: null, manual: false,
         attempts: 0, restarts: 0, onlineSince: 0, startedAt: 0, nextAt: 0, lastExit: 0, lastBeat: 0,
-        lastReason: '', lastKick: '', lastErr: '', info: null, logs: [], events: [],
+        chat: [], lastReason: '', lastKick: '', lastErr: '', info: null, logs: [], events: [],
         wasOnline: false, hadProblem: false, userInit: false, wdKilled: false,
       });
     }
@@ -39,6 +39,7 @@ class Runner extends EventEmitter {
   state(id) { return this._rt(id).state; }
   uptime(id) { const rt = this._rt(id); return rt.onlineSince ? Date.now() - rt.onlineSince : 0; }
   logs(id, n = 20) { return this._rt(id).logs.slice(-n); }
+  chatLog(id, n = 60) { return this._rt(id).chat.slice(-n); }
   events(id, n = 40) { return this._rt(id).events.slice(-n); }
 
   // স্বাস্থ্য স্কোর (০-১০০): আপটাইম অনুপাত, ঘনঘন ক্র্যাশ ও বর্তমান অবস্থা মিলিয়ে
@@ -196,6 +197,7 @@ class Runner extends EventEmitter {
       NODE_ENV: 'production',
       NODE_PATH: path.join(ROOT, 'node_modules'),
       MC_BOT_ID: bot.id, MC_HOST: bot.host, MC_PORT: String(bot.port),
+      MC_FEATURES: JSON.stringify({ join: bot.joinCmds || [], rules: bot.rules || [], periodic: bot.periodic || [] }),
       MC_USERNAME: bot.username, MC_VERSION: bot.version || '', MC_AUTH: 'offline',
     };
 
@@ -276,6 +278,7 @@ class Runner extends EventEmitter {
         }
       }
     } else if (m.t === 'info') rt.info = m.info;
+    else if (m.t === 'gchat') { rt.chat.push({ t: Date.now(), text: String(m.text || '').slice(0, 300) }); if (rt.chat.length > 100) rt.chat.shift(); }
     else if (m.t === 'kick') { rt.lastKick = m.reason; this._log(rt, 'kicked: ' + m.reason); this._ev(rt, 'kick', m.reason); }
     else if (m.t === 'error') { rt.lastErr = m.message; this._log(rt, '! ' + m.message); }
   }

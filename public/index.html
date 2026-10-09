@@ -187,6 +187,17 @@ textarea.in{resize:vertical;font-family:var(--mono);font-size:12.5px;line-height
   .chat{height:calc(100vh - 360px)}.msg{max-width:92%}
 }
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+a.btn{text-decoration:none;color:inherit}
+.drop{border:2px dashed var(--line);border-radius:16px;padding:16px;text-align:center;color:var(--t2);transition:.2s;cursor:pointer}
+.drop:hover,.drop.on{border-color:var(--a2);background:rgba(39,211,255,.08)}
+.rw{display:grid;gap:8px;align-items:center;margin-bottom:8px}
+.erow{grid-template-columns:1fr 1.4fr auto auto}
+@media(max-width:820px){.rw,.erow{grid-template-columns:1fr 1fr!important}}
+.tbl{width:100%;border-collapse:collapse;font-size:12.5px}.tbl td,.tbl th{padding:8px 10px;text-align:left;border-bottom:1px solid var(--line);white-space:nowrap}.tbl th{color:var(--t3);font-weight:500}
+.mono{font-family:var(--mono)}
+.st2{color:var(--ok)}.st3{color:var(--a2)}.st4{color:var(--warn)}.st5{color:var(--bad)}
+.urlchip{display:inline-flex;align-items:center;gap:8px;padding:6px 8px 6px 12px;border-radius:14px;background:rgba(0,0,0,.22);border:1px solid var(--line);font-family:var(--mono);font-size:12.5px;max-width:100%}
+.urlchip span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 </style>
 </head>
 <body>
@@ -238,6 +249,10 @@ textarea.in{resize:vertical;font-family:var(--mono);font-size:12.5px;line-height
 'use strict';
 /* ---------- icons (all drawn in code) ---------- */
 const P = {
+  cloud:'<path d="M17.5 19H7a4 4 0 01-.7-7.94 5.5 5.5 0 0110.7-1.3A4.6 4.6 0 0117.5 19z"/>',
+  upload:'<path d="M12 16V4M7 9l5-5 5 5M5 20h14"/>',
+  globe:'<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3.2 3 14.8 0 18M12 3c-3 3.2-3 14.8 0 18"/>',
+  ext:'<path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 01-1 1H5a1 1 0 01-1-1V7a1 1 0 011-1h5"/>',
   grid:'<rect x="3" y="3" width="7.5" height="7.5" rx="2"/><rect x="13.5" y="3" width="7.5" height="7.5" rx="2"/><rect x="3" y="13.5" width="7.5" height="7.5" rx="2"/><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="2"/>',
   bot:'<rect x="4" y="8" width="16" height="12" rx="4"/><path d="M12 4v4M9 13v1.5M15 13v1.5M8 20v2M16 20v2"/><circle cx="12" cy="3.4" r="1"/>',
   pulse:'<path d="M3 12h4l2.5-7 4 14 2.5-7H21"/>',
@@ -312,7 +327,7 @@ document.addEventListener('mouseout', (e) => { const el = e.target.closest && e.
 
 /* ---------- state / routing ---------- */
 let S = null, page = 'dash', sel = null, tab = 'overview', chatBot = '', chatLog = {}, busy = false;
-const NAV = [['dash', 'grid', 'ড্যাশবোর্ড'], ['bots', 'bot', 'বট'], ['analyze', 'pulse', 'বিশ্লেষণ'], ['ai', 'spark', 'AI সহায়ক'], ['tg', 'send', 'টেলিগ্রাম'], ['set', 'gear', 'সেটিংস']];
+const NAV = [['dash', 'grid', 'ড্যাশবোর্ড'], ['bots', 'bot', 'বট'], ['workers', 'cloud', 'Workers'], ['analyze', 'pulse', 'বিশ্লেষণ'], ['ai', 'spark', 'AI সহায়ক'], ['tg', 'send', 'টেলিগ্রাম'], ['set', 'gear', 'সেটিংস']];
 const TITLES = Object.fromEntries(NAV.map((n) => [n[0], n[2]]));
 function buildNav() {
   $('#nav').innerHTML = NAV.map(([k, i, t]) => `<button class="nv ${page === k ? 'on' : ''}" data-p="${k}">${ic(i)}<span>${t}</span></button>`).join('');
@@ -321,7 +336,7 @@ function buildNav() {
   $('#out').innerHTML = ic('out') + '<span>লগআউট</span>';
   document.querySelectorAll('[data-p]').forEach((b) => (b.onclick = () => go(b.dataset.p)));
 }
-function go(p, botId) { page = p; if (botId) { sel = botId; tab = 'overview'; } if (p === 'bots' && !botId) sel = null; buildNav(); render(true); }
+function go(p, botId) { page = p; if (p === 'workers') { W.id = null; W.stat = null; } if (botId) { sel = botId; tab = 'overview'; } if (p === 'bots' && !botId) sel = null; buildNav(); render(true); }
 function showLogin() { $('#app').classList.add('hide'); $('#login').classList.remove('hide'); try { localStorage.removeItem('mch-token'); } catch { /* ignore */ } if (window.loginInfo) loginInfo(); setTimeout(() => $('#pw').focus(), 50); }
 async function refresh() { const j = await api('/state'); if (!j.ok) return; if (S && S.feed) j.feed = S.feed; S = j; if (page === 'dash') { const f = await api('/feed'); if (f.ok) S.feed = f.feed; } if (!$('#app').classList.contains('hide')) { header(); render(false); } }
 setInterval(() => { const c = $('#clk'); if (c) c.textContent = new Date().toLocaleTimeString('bn-BD'); }, 1000);
@@ -336,10 +351,10 @@ function render(force) {
   if (!S) return;
   const v = $('#view');
   // ইনপুট ফোকাসে থাকলে ফুল রি-রেন্ডার এড়িয়ে লাইভ অংশ আপডেট
-  if (!force && ((page === 'bots' && sel && tab !== 'overview') || ['ai', 'tg', 'set'].includes(page))) return live();
+  if (!force && ((page === 'bots' && sel && tab !== 'overview') || ['ai', 'tg', 'set', 'workers'].includes(page))) return live();
   if (!force && (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName) || document.querySelector('.ov'))) return live();
   const scroll = v.scrollTop;
-  v.innerHTML = ({ dash: vDash, bots: vBots, analyze: vAnalyze, ai: vAi, tg: vTg, set: vSet })[page]();
+  v.innerHTML = ({ dash: vDash, bots: vBots, analyze: vAnalyze, ai: vAi, tg: vTg, set: vSet, workers: vWorkers })[page]();
   bind(); v.scrollTop = force ? 0 : scroll;
 }
 function live() { const c = $('#clk'); if (c) c.textContent = new Date().toLocaleTimeString('bn-BD'); document.querySelectorAll('[data-live]').forEach((el) => { const b = S.bots.find((x) => x.id === el.dataset.live); if (b && el.dataset.k === 'pill') el.innerHTML = pill(b.snap.state); }); }
@@ -411,7 +426,7 @@ function vBots() {
 }
 
 function vDetail(b) {
-  const s = b.snap, tabs = [['overview', 'সারসংক্ষেপ'], ['console', 'কনসোল'], ['script', 'স্ক্রিপ্ট'], ['analysis', 'বিশ্লেষণ'], ['config', 'সেটিংস']];
+  const s = b.snap, tabs = [['overview', 'সারসংক্ষেপ'], ['console', 'কনসোল'], ['script', 'স্ক্রিপ্ট'], ['analysis', 'বিশ্লেষণ'], ['automation', 'অটোমেশন'], ['config', 'সেটিংস']];
   let body = '';
   if (tab === 'overview') {
     const i = s.info || {};
@@ -429,9 +444,10 @@ function vDetail(b) {
         ${s.state === 'online' ? `<div class="row" style="margin-top:14px"><input class="in" id="say" placeholder="গেমে চ্যাট পাঠান..."><button class="btn pri" id="sayb">${ic('send')}</button></div>` : ''}
         ${s.diag && s.state !== 'online' ? `<div style="margin-top:14px;padding:12px;border-radius:14px;background:rgba(255,185,74,.12);border:1px solid rgba(255,185,74,.35)"><b>${esc(s.diag.title)}</b><div class="mut" style="margin-top:4px">${esc(s.diag.hint)}</div></div>` : ''}
       </div></div>`;
-  } else if (tab === 'console') body = `<div class="g p"><div class="row" style="margin-bottom:12px"><div class="h3" style="margin:0;flex:1">লাইভ লগ</div><button class="btn sm" id="lgr">${ic('redo')}রিফ্রেশ</button></div><div class="term" id="term">লোড হচ্ছে...</div></div>`;
+  } else if (tab === 'console') body = `<div class="grid g2"><div class="g p"><div class="row" style="margin-bottom:12px"><div class="h3" style="margin:0;flex:1">লাইভ লগ</div><button class="btn sm" id="lgr">${ic('redo')}রিফ্রেশ</button></div><div class="term" id="term">লোড হচ্ছে...</div></div><div class="g p"><div class="h3">গেম চ্যাট</div><div class="term" id="gchat">লোড হচ্ছে...</div></div></div>`;
   else if (tab === 'script') body = `<div class="g p"><div class="row wrap" style="margin-bottom:12px"><div class="h3" style="margin:0;flex:1">mineflayer স্ক্রিপ্ট</div><button class="btn sm" id="scundo">${ic('undo')}আগের সংস্করণ</button><button class="btn sm" id="screset">ডিফল্ট</button><button class="btn sm" data-ai-bot="${b.id}">${ic('spark')}AI দিয়ে আপডেট</button><button class="btn pri sm" id="scsave">${ic('check')}সেভ ও রিস্টার্ট</button></div><textarea class="in" id="code" spellcheck="false" style="min-height:440px">লোড হচ্ছে...</textarea></div>`;
   else if (tab === 'analysis') body = `<div id="an">${'<div class="g empty">লোড হচ্ছে...</div>'}</div>`;
+  else if (tab === 'automation') body = vAuto(b);
   else body = `<div class="g p" style="max-width:640px"><div class="col">
       <div><label>গেম-নাম</label><input class="in" id="c-u" value="${esc(b.username)}"></div>
       <div class="row"><div style="flex:1"><label>সার্ভার</label><input class="in" id="c-h" value="${esc(b.host)}"></div><div style="width:110px"><label>পোর্ট</label><input class="in" id="c-p" type="number" value="${b.port}"></div></div>
@@ -508,7 +524,7 @@ function bind() {
   const b = sel && S.bots.find((x) => x.id === sel);
   if (page === 'bots' && b) {
     if ($('#sayb')) $('#sayb').onclick = async () => { const t = $('#say').value.trim(); if (t) { await act(`/bots/${b.id}/say`, 'POST', { text: t }); $('#say').value = ''; } };
-    if (tab === 'console') { const load = async () => { const r = await api(`/bots/${b.id}/logs`); const t = $('#term'); if (!t || !r.ok) return; const down = t.scrollTop + t.clientHeight >= t.scrollHeight - 30; t.innerHTML = r.logs.map((l) => `<div class="${l.includes(' ! ') || l.includes('kicked') ? 'e' : l.includes('সার্ভারে ঢুকেছে') ? 'k' : ''}">${esc(l)}</div>`).join('') || '(লগ নেই)'; if (down) t.scrollTop = t.scrollHeight; }; load(); $('#lgr').onclick = load; clearInterval(window._lt); window._lt = setInterval(() => (tab === 'console' && page === 'bots' ? load() : clearInterval(window._lt)), 2500); }
+    if (tab === 'console') { const load = async () => { const r = await api(`/bots/${b.id}/logs`); const t = $('#term'); if (!t || !r.ok) return; const down = t.scrollTop + t.clientHeight >= t.scrollHeight - 30; t.innerHTML = r.logs.map((l) => `<div class="${l.includes(' ! ') || l.includes('kicked') ? 'e' : l.includes('সার্ভারে ঢুকেছে') ? 'k' : ''}">${esc(l)}</div>`).join('') || '(লগ নেই)'; if (down) t.scrollTop = t.scrollHeight; const gc = $('#gchat'); if (gc && r.chat) { const gd = gc.scrollTop + gc.clientHeight >= gc.scrollHeight - 30; gc.innerHTML = r.chat.map((c) => `<div><span class="t">${new Date(c.t).toTimeString().slice(0, 8)}</span> ${esc(c.text)}</div>`).join('') || '(এখনো কোনো চ্যাট আসেনি)'; if (gd) gc.scrollTop = gc.scrollHeight; } }; load(); $('#lgr').onclick = load; clearInterval(window._lt); window._lt = setInterval(() => (tab === 'console' && page === 'bots' ? load() : clearInterval(window._lt)), 2500); }
     if (tab === 'script') {
       api(`/bots/${b.id}/script`).then((r) => { if ($('#code')) $('#code').value = r.code || ''; });
       $('#scsave').onclick = () => act(`/bots/${b.id}/script`, 'PUT', { code: $('#code').value }, 'স্ক্রিপ্ট সেভ হয়েছে');
@@ -516,6 +532,7 @@ function bind() {
       $('#screset').onclick = () => confirmBox('ডিফল্ট স্ক্রিপ্টে ফিরে যাবেন?', () => act(`/bots/${b.id}/script/reset`, 'POST', null, 'রিসেট হয়েছে').then(() => render(true)));
     }
     if (tab === 'analysis') loadAnalysis(b);
+    if (tab === 'automation') bindAuto(b);
     if (tab === 'config') {
       $('#c-n').onclick = (e) => e.currentTarget.classList.toggle('on');
       $('#c-s').onclick = () => act(`/bots/${b.id}`, 'PATCH', { username: $('#c-u').value.trim(), host: $('#c-h').value.trim(), port: $('#c-p').value, version: $('#c-v').value, notify: $('#c-n').classList.contains('on'), autoRestartHours: $('#c-r').value }, 'সেভ হয়েছে');
@@ -523,6 +540,7 @@ function bind() {
       $('#c-d').onclick = () => confirmBox('বট ও তার স্ক্রিপ্ট মুছে যাবে। নিশ্চিত?', async () => { await act(`/bots/${b.id}`, 'DELETE'); sel = null; render(true); });
     }
   }
+  if (page === 'workers') wkInit();
   if (page === 'ai') bindAi();
   if (page === 'tg') {
     $('#tg-add').onclick = async () => { const r = await api('/tg', 'POST', { token: $('#tg-t').value.trim() }); r.ok ? toast('যোগ হয়েছে: @' + r.username, 'ok') : toast(r.error, 'bad'); await refresh(); render(true); };
@@ -576,6 +594,232 @@ function bindSet() {
   $('#rstf').onchange = (e) => { const f = e.target.files[0]; if (!f) return; confirmBox('বর্তমান বট ও সেটিংস ব্যাকআপ দিয়ে বদলে যাবে। নিশ্চিত?', async () => { try { const j = JSON.parse(await f.text()); const r = await api('/restore', 'POST', j); r.ok ? toast(r.bots + 'টি বট ফিরেছে', 'ok') : toast(r.error, 'bad'); await refresh(); render(true); } catch { toast('ফাইল পড়া যায়নি', 'bad'); } }); };
 }
 
+
+/* ---------- Bot automation ---------- */
+function auRow(kind, x = {}) {
+  const del = `<button class="btn bad sm" data-del>${ic('x')}</button>`;
+  if (kind === 'join') return `<div class="rw" data-r="join" style="grid-template-columns:1fr 100px auto"><input class="in" data-f="cmd" placeholder="/login পাসওয়ার্ড" value="${esc(x.cmd || '')}" autocomplete="off"><input class="in" data-f="delay" type="number" min="0" max="300" title="কত সেকেন্ড পরে" placeholder="সেকেন্ড" value="${x.delay ?? 3}">${del}</div>`;
+  if (kind === 'rule') return `<div class="rw" data-r="rule" style="grid-template-columns:1fr 1fr 80px auto auto"><input class="in" data-f="match" placeholder="যা শুনলে (লেখা বা regex)" value="${esc(x.match || '')}"><input class="in" data-f="reply" placeholder="উত্তর ({bot}, $1)" value="${esc(x.reply || '')}"><input class="in" data-f="cooldown" type="number" min="1" max="3600" title="কুলডাউন (সেকেন্ড)" value="${x.cooldown ?? 10}"><label class="row" style="margin:0;gap:6px;font-size:12px"><input type="checkbox" data-f="regex" ${x.regex ? 'checked' : ''}>regex</label>${del}</div>`;
+  return `<div class="rw" data-r="per" style="grid-template-columns:1fr 110px auto"><input class="in" data-f="text" placeholder="মেসেজ" value="${esc(x.text || '')}"><input class="in" data-f="every" type="number" min="30" max="86400" title="কত সেকেন্ড পরপর" value="${x.every ?? 300}">${del}</div>`;
+}
+function vAuto(b) {
+  const card = (title, id, kind, rows, hint, extra = '') => `<div class="g p"><div class="row wrap" style="margin-bottom:12px"><div class="h3" style="margin:0;flex:1">${title}</div>${extra}<button class="btn sm" data-add="${kind}">${ic('plus')}যোগ</button></div><div id="${id}">${rows.map((x) => auRow(kind, x)).join('')}</div><div class="dim">${hint}</div></div>`;
+  return `<div class="col">
+    ${card('জয়েন কমান্ড (ঢোকার পরে পাঠায়)', 'au-join', 'join', b.joinCmds || [], 'AuthMe সার্ভারে প্রথমবার /register পাস পাস, এরপর প্রতিবার /login পাস। এই কমান্ড সবার আগে যায়।', `<button class="btn sm" data-add="join" data-pre="/login ">${ic('plus')}/login</button><button class="btn sm" data-add="join" data-pre="/register ">${ic('plus')}/register</button>`)}
+    ${card('অটো-রিপ্লাই রুল', 'au-rule', 'rule', b.rules || [], 'চ্যাটে কেউ লিখলে বট নিজে উত্তর দেয়। regex চালু করলে উত্তরে $1, $2 দিয়ে ক্যাপচার ব্যবহার করা যায়। নিজের মেসেজে সাড়া দেয় না।')}
+    ${card('নির্দিষ্ট সময় পরপর মেসেজ', 'au-per', 'per', b.periodic || [], 'সর্বনিম্ন ৩০ সেকেন্ড। অ্যান্টি-AFK বা বিজ্ঞপ্তির জন্য কাজে লাগে।')}
+    <div class="row"><button class="btn pri" id="au-save">${ic('check')}সেভ ও রিস্টার্ট</button><span class="dim">স্ক্রিপ্ট না বদলেও এগুলো সব স্ক্রিপ্টে কাজ করে</span></div></div>`;
+}
+function bindAuto(b) {
+  const ids = { join: 'au-join', rule: 'au-rule', per: 'au-per' };
+  document.querySelectorAll('[data-add]').forEach((el) => (el.onclick = () => { const k = el.dataset.add, box = $('#' + ids[k]); box.insertAdjacentHTML('beforeend', auRow(k, k === 'join' && el.dataset.pre ? { cmd: el.dataset.pre, delay: 3 } : {})); box.lastElementChild.querySelector('input').focus(); }));
+  Object.values(ids).forEach((id) => { $('#' + id).onclick = (e) => { const d = e.target.closest('[data-del]'); if (d) d.closest('.rw').remove(); }; });
+  const col = (id) => [...$('#' + id).querySelectorAll('.rw')].map((r) => { const o = {}; r.querySelectorAll('[data-f]').forEach((i) => { o[i.dataset.f] = i.type === 'checkbox' ? i.checked : i.value; }); return o; });
+  $('#au-save').onclick = () => act(`/bots/${b.id}`, 'PATCH', { joinCmds: col('au-join'), rules: col('au-rule'), periodic: col('au-per') }, 'অটোমেশন সেভ হয়েছে');
+}
+
+/* ---------- Workers ---------- */
+const W = { list: [], agg: null, id: null, tab: 'overview', stat: null, tpl: null, max: 10 };
+const tzo = () => new Date().getTimezoneOffset();
+const nf = (n) => Number(n || 0).toLocaleString('en-US');
+const avgMs = (o) => (o && o.req ? Math.round(o.ms / o.req) : 0);
+const wkUrl = (w) => location.origin + '/w/' + w.slug;
+const WST = { running: 'চলছে', starting: 'চালু হচ্ছে', stopped: 'বন্ধ', error: 'ত্রুটি' };
+const wkPill = (w) => `<span class="pill s-${{ running: 'online', starting: 'starting', error: 'reconnecting' }[w.state] || 'stopped'}"><span class="dot"></span>${WST[w.state] || w.state}</span>`;
+function copyText(t) {
+  const fb = () => { const a = document.createElement('textarea'); a.value = t; a.style.position = 'fixed'; a.style.opacity = '0'; document.body.append(a); a.select(); try { document.execCommand('copy'); } catch { /* ignore */ } a.remove(); toast('কপি হয়েছে', 'ok'); };
+  try { navigator.clipboard.writeText(t).then(() => toast('কপি হয়েছে', 'ok'), fb); } catch { fb(); }
+}
+function slugify(s) { return String(s).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40); }
+function bars(items, color, H = 150, mini = false) {
+  const Wd = 600, pad = mini ? 4 : 22, max = Math.max(1, ...items.map((x) => x.req)), bw = Wd / Math.max(1, items.length);
+  return `<svg viewBox="0 0 ${Wd} ${H}" style="width:100%;height:auto;display:block;max-height:${mini ? 64 : 190}px">${items.map((x, i) => {
+    const h = Math.max(x.req ? 3 : 1, (x.req / max) * (H - pad - 6)), eh = x.req ? (x.err / x.req) * h : 0, xx = i * bw + bw * 0.14, w = bw * 0.72;
+    return `<g><title>${esc(x.label)}: ${x.req} রিকোয়েস্ট${x.err ? `, ${x.err} ত্রুটি` : ''}</title><rect x="${xx}" y="${H - pad - h}" width="${w}" height="${h}" rx="3" fill="${color}" opacity="${x.req ? 0.85 : 0.18}"/>${eh ? `<rect x="${xx}" y="${H - pad - eh}" width="${w}" height="${eh}" rx="3" fill="#ff5a73"/>` : ''}${!mini && x.tick ? `<text x="${i * bw + bw / 2}" y="${H - 6}" font-size="11" text-anchor="middle" fill="currentColor" opacity=".55">${esc(x.tick)}</text>` : ''}</g>`;
+  }).join('')}</svg>`;
+}
+const hoursItems = (a, mini) => a.hours.map((h, i) => ({ label: h.label + ':00', req: h.req, err: h.err, tick: !mini && i % 3 === 0 ? h.label : '' }));
+const daysItems = (a) => a.days.map((d, i) => ({ label: d.label, req: d.req, err: d.err, tick: i % 2 === 1 ? d.label : '' }));
+
+function vWorkers() { return '<div id="wk-root"><div class="g empty">লোড হচ্ছে...</div></div>'; }
+function wkInit() {
+  clearInterval(window._wk);
+  wkLoad(true);
+  window._wk = setInterval(() => { if (page !== 'workers') return clearInterval(window._wk); if (!document.hidden && !document.querySelector('.ov')) wkLoad(false); }, 4000);
+}
+async function wkLoad(full) {
+  const r = await api('/workers?tz=' + tzo());
+  if (!r.ok || page !== 'workers') return;
+  W.list = r.workers; W.agg = r.agg; W.max = r.max;
+  if (W.id && !W.list.find((x) => x.id === W.id)) W.id = null;
+  if (W.id) { const s = await api(`/workers/${W.id}/stats?tz=${tzo()}`); if (s.ok) W.stat = s; }
+  if (full || !$('#wk-body')) wkShell(); else wkPaint();
+}
+function wkShell() {
+  const root = $('#wk-root'); if (!root) return;
+  const w = W.id && W.list.find((x) => x.id === W.id);
+  if (!w) {
+    root.innerHTML = `<div class="row wrap" style="margin-bottom:16px"><div class="mut" style="flex:1">${W.list.length}/${W.max} Worker &nbsp;·&nbsp; পাবলিক URL: <span class="mono">/w/নাম</span></div><button class="btn pri" id="wk-new">${ic('plus')}নতুন Worker</button></div><div id="wk-body"></div>`;
+    $('#wk-new').onclick = wkNew; wkPaint(); return;
+  }
+  const tabs = [['overview', 'সারসংক্ষেপ'], ['code', 'কোড'], ['settings', 'ENV ও সেটিংস'], ['logs', 'লগ'], ['test', 'টেস্ট']];
+  root.innerHTML = `<div class="row wrap" style="margin-bottom:12px"><button class="btn sm" id="wk-back">${ic('undo')}সব Worker</button><b style="font-size:20px">${esc(w.name)}</b><span id="wk-pill">${wkPill(w)}</span><div class="sp"></div><button class="btn sm" id="wk-rs">${ic('redo')}রিস্টার্ট</button><button class="btn sm ${w.enabled ? 'bad' : 'ok'}" id="wk-tg">${w.enabled ? ic('stop') + 'বন্ধ' : ic('play') + 'চালু'}</button></div>
+  <div style="margin-bottom:14px"><div class="urlchip">${ic('globe')}<span>${esc(wkUrl(w))}</span><button class="btn sm" id="wk-copy" aria-label="কপি">${ic('copy')}</button><a class="btn sm" href="${esc(wkUrl(w))}" target="_blank" rel="noopener" aria-label="খুলুন">${ic('ext')}</a></div></div>
+  <div class="tabs">${tabs.map(([k, t]) => `<button class="tab ${W.tab === k ? 'on' : ''}" data-wt="${k}">${t}</button>`).join('')}</div><div id="wk-body"></div>`;
+  $('#wk-back').onclick = () => { W.id = null; W.stat = null; wkLoad(true); };
+  $('#wk-copy').onclick = () => copyText(wkUrl(w));
+  $('#wk-rs').onclick = async () => { const r = await api(`/workers/${w.id}/restart`, 'POST'); r.ok ? toast('রিস্টার্ট হয়েছে', 'ok') : toast(r.error, 'bad'); wkLoad(false); };
+  $('#wk-tg').onclick = async () => { const r = await api(`/workers/${w.id}/${w.enabled ? 'stop' : 'start'}`, 'POST'); r.ok ? toast('সম্পন্ন', 'ok') : toast(r.error, 'bad'); wkLoad(true); };
+  root.querySelectorAll('[data-wt]').forEach((b) => (b.onclick = () => { W.tab = b.dataset.wt; root.querySelectorAll('[data-wt]').forEach((x) => x.classList.toggle('on', x === b)); $('#wk-body').dataset.tab = ''; wkPaint(); }));
+  wkPaint();
+}
+function wkPaint() {
+  const el = $('#wk-body'); if (!el) return;
+  const w = W.id && W.list.find((x) => x.id === W.id);
+  if (!w) { el.innerHTML = wkListHtml(); wkBindList(); return; }
+  const pill = $('#wk-pill'); if (pill) pill.innerHTML = wkPill(w);
+  if (W.tab === 'overview') { el.dataset.tab = 'overview'; el.innerHTML = wkOverview(w); return; }
+  if (el.dataset.tab === W.tab) return;
+  el.dataset.tab = W.tab;
+  ({ code: wkCodeTab, settings: wkSettingsTab, logs: wkLogsTab, test: wkTestTab })[W.tab](w, el);
+}
+
+function wkCharts(a) { return `<div class="grid g2" style="margin-top:16px"><div class="g p"><div class="h3">রিকোয়েস্ট: গত ২৪ ঘণ্টা</div>${bars(hoursItems(a), '#7c5cff')}</div><div class="g p"><div class="h3">রিকোয়েস্ট: গত ১৪ দিন</div>${bars(daysItems(a), '#27d3ff')}</div></div>`; }
+function wkListHtml() {
+  const a = W.agg; if (!a) return '';
+  const run = W.list.filter((w) => w.state === 'running').length;
+  const tiles = `<div class="grid g4">${tile('Workers', `${run}<span style="font-size:18px;opacity:.6">/${W.list.length}</span>`, 'চলমান', 'cloud', 'var(--a1)')}${tile('আজকের রিকোয়েস্ট', nf(a.today.req), `গতকাল ${nf(a.yesterday.req)}`, 'pulse', 'var(--ok)')}${tile('আজকের ত্রুটি (5xx)', nf(a.today.err), a.today.req ? (a.today.err / a.today.req * 100).toFixed(1) + '% ত্রুটি হার' : '--', 'warn', 'var(--bad)')}${tile('গড় লেটেন্সি', avgMs(a.today) + ' ms', `৭ দিনে ${nf(a.d7.req)} রিকোয়েস্ট`, 'clock', 'var(--a2)')}</div>`;
+  const cards = W.list.length ? `<div class="h3" style="margin:24px 4px 12px">Workers</div><div class="grid g3">${W.list.map(wkCard).join('')}</div>` : `<div class="g empty" style="margin-top:16px">${ic('cloud')}<p>এখনো কোনো Worker নেই। worker.js আপলোড করে চালু করুন, একটি URL পাবেন।</p><button class="btn pri" id="wk-new2">${ic('plus')}নতুন Worker</button></div>`;
+  return tiles + wkCharts(a) + cards;
+}
+function wkCard(w) {
+  const t = w.agg.today;
+  return `<div class="g bc tilt" data-wk="${w.id}"><div class="row"><div style="flex:1;min-width:0"><div class="nm">${esc(w.name)}</div><div class="addr" style="overflow:hidden;text-overflow:ellipsis">/w/${esc(w.slug)}</div><div style="margin-top:8px">${wkPill(w)}</div></div><div style="text-align:right"><div style="font-size:26px;font-weight:700">${nf(t.req)}</div><div class="dim">আজ</div></div></div>
+  <div style="margin-top:12px">${bars(hoursItems(w.agg, true), '#7c5cff', 70, true)}</div>
+  <div class="chips"><span class="chip">${ic('warn')}${nf(t.err)} ত্রুটি</span><span class="chip">${ic('clock')}${avgMs(t)} ms</span>${w.envCount ? `<span class="chip">${ic('key')}${w.envCount} ENV</span>` : ''}</div>
+  ${w.state === 'error' ? `<div class="dim" style="color:var(--bad);margin-top:8px">${esc(String(w.error).split('\n')[0].slice(0, 110))}</div>` : ''}
+  <div class="row" style="margin-top:12px" onclick="event.stopPropagation()"><button class="btn sm" data-copyu="${esc(wkUrl(w))}">${ic('copy')}URL</button>${w.enabled ? `<button class="btn bad sm" data-wkact="stop" data-id="${w.id}">${ic('stop')}বন্ধ</button>` : `<button class="btn ok sm" data-wkact="start" data-id="${w.id}">${ic('play')}চালু</button>`}</div></div>`;
+}
+function wkBindList() {
+  const el = $('#wk-body');
+  el.querySelectorAll('[data-wk]').forEach((c) => (c.onclick = () => { W.id = c.dataset.wk; W.tab = 'overview'; W.stat = null; wkLoad(true); }));
+  el.querySelectorAll('[data-copyu]').forEach((b) => (b.onclick = (e) => { e.stopPropagation(); copyText(b.dataset.copyu); }));
+  el.querySelectorAll('[data-wkact]').forEach((b) => (b.onclick = async (e) => { e.stopPropagation(); const r = await api(`/workers/${b.dataset.id}/${b.dataset.wkact}`, 'POST'); r.ok ? toast('সম্পন্ন', 'ok') : toast(r.error, 'bad'); wkLoad(false); }));
+  const n2 = $('#wk-new2'); if (n2) n2.onclick = wkNew;
+}
+function wkOverview(w) {
+  const s = W.stat || { agg: w.agg, lat: { p50: 0, p95: 0 }, recent: [] }, a = s.agg;
+  const codes = a.codes30, tot = Math.max(1, codes.reduce((x, y) => x + y, 0));
+  const cl = [['2xx সফল', 'ok'], ['3xx রিডাইরেক্ট', 'a2'], ['4xx ক্লায়েন্ট ত্রুটি', 'warn'], ['5xx সার্ভার ত্রুটি', 'bad']];
+  return `<div class="grid g4">${tile('আজকের রিকোয়েস্ট', nf(a.today.req), `গতকাল ${nf(a.yesterday.req)} · ৭ দিনে ${nf(a.d7.req)}`, 'pulse', 'var(--ok)')}${tile('আজকের ত্রুটি (5xx)', nf(a.today.err), a.today.req ? (a.today.err / a.today.req * 100).toFixed(1) + '% ত্রুটি হার' : '--', 'warn', 'var(--bad)')}${tile('গড় লেটেন্সি', avgMs(a.today) + ' ms', `p50 ${s.lat.p50} · p95 ${s.lat.p95} ms`, 'clock', 'var(--a2)')}${tile('মোট রিকোয়েস্ট', nf(a.total), `৩০ দিনে ${nf(a.d30.req)}`, 'bolt', 'var(--a1)')}</div>
+  ${w.state === 'error' ? `<div class="g p" style="margin-top:16px;border-color:rgba(255,90,115,.5)"><b style="color:var(--bad)">Worker ত্রুটিতে আছে</b><pre class="mono" style="white-space:pre-wrap;margin:8px 0 0;font-size:12px">${esc(w.error)}</pre></div>` : ''}
+  ${wkCharts(a)}
+  <div class="grid g2" style="margin-top:16px"><div class="g p"><div class="h3">স্ট্যাটাস কোড (৩০ দিন)</div><div class="col">${cl.map(([n, c], i) => `<div><div class="row"><span style="flex:1">${n}</span><span class="mut">${nf(codes[i])}</span></div><div class="bar"><i style="width:${codes[i] / tot * 100}%;background:var(--${c})"></i></div></div>`).join('')}</div><div class="dim" style="margin-top:14px">KV key: ${w.kvKeys} &nbsp; ENV: ${w.envCount} &nbsp; Cron: ${w.cronMin ? 'প্রতি ' + w.cronMin + ' মিনিট' : 'বন্ধ'}</div></div>
+  <div class="g p"><div class="h3">সাম্প্রতিক রিকোয়েস্ট</div><div class="scr" style="overflow:auto;max-height:300px">${s.recent.length ? `<table class="tbl"><tr><th>সময়</th><th>মেথড</th><th>পাথ</th><th>স্ট্যাটাস</th><th>ms</th></tr>${s.recent.slice(0, 25).map((r) => `<tr><td>${new Date(r.t).toLocaleTimeString()}</td><td>${esc(r.method)}</td><td class="mono" style="max-width:190px;overflow:hidden;text-overflow:ellipsis">${esc(r.path)}</td><td class="st${String(r.status)[0]}">${r.status}</td><td>${r.ms}</td></tr>`).join('')}</table>` : '<div class="mut">এখনো কোনো রিকোয়েস্ট আসেনি। URL-এ গিয়ে বা টেস্ট ট্যাবে পাঠান।</div>'}</div></div></div>`;
+}
+
+function wkCodeTab(w, el) {
+  el.innerHTML = `<div class="g p"><div class="row wrap" style="margin-bottom:12px"><div class="h3" style="margin:0;flex:1">worker.js</div><input type="file" id="wk-file" accept=".js,.mjs,.cjs,.txt" hidden><button class="btn sm" id="wk-up">${ic('upload')}ফাইল আপলোড</button>${w.hasPrev ? `<button class="btn sm" id="wk-rb">${ic('undo')}আগের সংস্করণ</button>` : ''}<button class="btn pri sm" id="wk-dep">${ic('bolt')}ডিপ্লয়</button></div><div class="drop" id="wk-drop">worker.js ফাইল এখানে ছেড়ে দিন বা চাপ দিয়ে বাছুন</div><textarea class="in" id="wk-code" spellcheck="false" style="min-height:420px;margin-top:12px">লোড হচ্ছে...</textarea><div id="wk-err" style="margin-top:10px"></div><div class="dim" style="margin-top:8px">ফরম্যাট: <span class="mono">export default { async fetch(request, env, ctx) { ... } }</span> অথবা <span class="mono">addEventListener('fetch', ...)</span>। ডিপ্লয় ব্যর্থ হলে আগের কোডই চালু থাকে।</div></div>`;
+  api(`/workers/${w.id}/code`).then((r) => { const t = $('#wk-code'); if (t && r.ok) t.value = r.code; });
+  const load = (f) => { if (!f) return; if (f.size > 900000) return toast('ফাইল অনেক বড়', 'bad'); const rd = new FileReader(); rd.onload = () => { $('#wk-code').value = String(rd.result); toast(f.name + ' লোড হয়েছে, এখন ডিপ্লয় চাপুন', 'ok'); }; rd.readAsText(f); };
+  $('#wk-up').onclick = () => $('#wk-file').click();
+  $('#wk-drop').onclick = () => $('#wk-file').click();
+  $('#wk-file').onchange = (e) => load(e.target.files[0]);
+  const d = $('#wk-drop');
+  ['dragover', 'dragenter'].forEach((ev) => d.addEventListener(ev, (e) => { e.preventDefault(); d.classList.add('on'); }));
+  ['dragleave', 'drop'].forEach((ev) => d.addEventListener(ev, (e) => { e.preventDefault(); d.classList.remove('on'); }));
+  d.addEventListener('drop', (e) => load(e.dataTransfer.files[0]));
+  $('#wk-dep').onclick = async () => {
+    const b = $('#wk-dep'); b.disabled = true;
+    const r = await api(`/workers/${w.id}/code`, 'PUT', { code: $('#wk-code').value });
+    b.disabled = false;
+    const er = $('#wk-err');
+    if (r.ok) { er.innerHTML = ''; toast('ডিপ্লয় সফল, Worker চালু', 'ok'); } else er.innerHTML = `<div style="padding:12px;border-radius:14px;background:rgba(255,90,115,.12);border:1px solid rgba(255,90,115,.4)"><b>ডিপ্লয় ব্যর্থ${r.rolledBack ? ' (আগের কোড ফেরত আনা হয়েছে)' : ''}</b><pre class="mono" style="white-space:pre-wrap;margin:8px 0 0;font-size:12px">${esc(r.error)}</pre></div>`;
+    wkLoad(false);
+  };
+  const rb = $('#wk-rb');
+  if (rb) rb.onclick = async () => { const r = await api(`/workers/${w.id}/rollback`, 'POST'); r.ok ? toast('আগের সংস্করণ ফিরেছে', 'ok') : toast(r.error, 'bad'); await wkLoad(false); const w2 = W.list.find((x) => x.id === w.id); if (w2) wkCodeTab(w2, $('#wk-body')); };
+}
+
+function envRow(x = {}) {
+  return `<div class="erow rw" style="margin-bottom:8px"><input class="in" data-k placeholder="KEY" value="${esc(x.key || '')}" autocomplete="off" autocapitalize="off"><input class="in" data-v type="${x.secret ? 'password' : 'text'}" placeholder="${x.secret && x.has ? '•••••••• (সেভ করা আছে)' : 'ভ্যালু'}" value="${x.secret ? '' : esc(x.value || '')}" autocomplete="off"><label class="row" style="margin:0;gap:6px;font-size:12px"><input type="checkbox" data-s ${x.secret ? 'checked' : ''}>গোপন</label><button class="btn bad sm" data-del>${ic('x')}</button></div>`;
+}
+async function wkSettingsTab(w, el) {
+  const e = await api(`/workers/${w.id}/env`);
+  el.innerHTML = `<div class="g p"><div class="h3">Environment Variables</div><div id="wk-envs">${(e.env || []).map(envRow).join('') || '<div class="dim" id="env-empty" style="margin-bottom:8px">কোনো ভেরিয়েবল নেই</div>'}</div><div class="row wrap" style="margin-top:8px"><button class="btn sm" id="env-add">${ic('plus')}ভেরিয়েবল যোগ</button><div class="sp"></div><button class="btn pri sm" id="env-save">${ic('check')}সেভ ও রিস্টার্ট</button></div><div class="dim" style="margin-top:10px">কোডে <span class="mono">env.KEY</span> (বা <span class="mono">process.env.KEY</span>)। "গোপন" দিলে ভ্যালু আর দেখা যায় না। <span class="mono">env.KV</span> দিয়ে স্থায়ী ডাটা রাখা যায়।</div></div>
+  <div class="g p" style="margin-top:16px"><div class="h3">সেটিংস</div><div class="col" style="max-width:560px"><div><label>নাম</label><input class="in" id="ws-n" value="${esc(w.name)}"></div><div><label>URL নাম (/w/...)</label><input class="in" id="ws-s" value="${esc(w.slug)}"></div><div><label>Cron: প্রতি কত মিনিটে scheduled() চলবে (0 = বন্ধ)</label><input class="in" id="ws-c" type="number" min="0" max="1440" value="${w.cronMin}"></div><div class="row"><button class="btn pri" id="ws-save">${ic('check')}সেভ</button><div class="sp"></div><button class="btn bad" id="ws-del">${ic('trash')}Worker মুছুন</button></div></div></div>`;
+  const box = $('#wk-envs');
+  $('#env-add').onclick = () => { const em = $('#env-empty'); if (em) em.remove(); box.insertAdjacentHTML('beforeend', envRow()); box.lastElementChild.querySelector('input').focus(); };
+  box.onclick = (ev) => { const d = ev.target.closest('[data-del]'); if (d) d.closest('.rw').remove(); };
+  box.onchange = (ev) => { if (ev.target.matches('[data-s]')) ev.target.closest('.rw').querySelector('[data-v]').type = ev.target.checked ? 'password' : 'text'; };
+  $('#env-save').onclick = async () => {
+    const env = [...box.querySelectorAll('.rw')].map((r) => ({ key: r.querySelector('[data-k]').value.trim(), value: r.querySelector('[data-v]').value, secret: r.querySelector('[data-s]').checked })).filter((x) => x.key);
+    const r = await api(`/workers/${w.id}/env`, 'PUT', { env });
+    if (!r.ok) return toast(r.error, 'bad');
+    toast(r.deploy && r.deploy.ok === false ? 'সেভ হয়েছে কিন্তু Worker চালু হয়নি' : 'ENV সেভ হয়েছে, Worker রিস্টার্ট', r.deploy && r.deploy.ok === false ? 'bad' : 'ok');
+    await wkLoad(false); wkSettingsTab(W.list.find((x) => x.id === w.id) || w, $('#wk-body'));
+  };
+  $('#ws-save').onclick = async () => { const r = await api(`/workers/${w.id}`, 'PATCH', { name: $('#ws-n').value.trim(), slug: $('#ws-s').value.trim(), cronMin: $('#ws-c').value }); if (!r.ok) return toast(r.error, 'bad'); toast('সেভ হয়েছে', 'ok'); wkLoad(true); };
+  $('#ws-del').onclick = () => confirmBox('Worker, তার কোড ও KV ডাটা মুছে যাবে। নিশ্চিত?', async () => { await api(`/workers/${w.id}`, 'DELETE'); W.id = null; toast('মুছে ফেলা হয়েছে', 'ok'); wkLoad(true); });
+}
+
+function wkLogsTab(w, el) {
+  el.innerHTML = `<div class="g p"><div class="row" style="margin-bottom:12px"><div class="h3" style="margin:0;flex:1">console লগ</div><button class="btn sm" id="wl-r">${ic('redo')}রিফ্রেশ</button></div><div class="term" id="wl-t">লোড হচ্ছে...</div></div>`;
+  const load = async () => {
+    if (page !== 'workers' || W.tab !== 'logs' || !$('#wl-t')) return clearInterval(window._wl);
+    const r = await api(`/workers/${w.id}/logs`); const t = $('#wl-t'); if (!t || !r.ok) return;
+    const down = t.scrollTop + t.clientHeight >= t.scrollHeight - 30;
+    t.innerHTML = r.logs.map((l) => `<div class="${l.includes(' ! ') ? 'e' : ''}">${esc(l)}</div>`).join('') || '(কোনো লগ নেই। কোডে console.log() লিখলে এখানে আসবে)';
+    if (down) t.scrollTop = t.scrollHeight;
+  };
+  load(); $('#wl-r').onclick = load; clearInterval(window._wl); window._wl = setInterval(load, 2500);
+}
+
+function wkTestTab(w, el) {
+  el.innerHTML = `<div class="grid g2"><div class="g p"><div class="h3">রিকোয়েস্ট পাঠান</div><div class="col"><div class="row"><select class="in" id="wt-m" style="width:120px">${['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'].map((m) => `<option>${m}</option>`).join('')}</select><input class="in" id="wt-p" value="/" placeholder="/path?x=1"></div><div><label>Headers (প্রতি লাইনে Key: value)</label><textarea class="in" id="wt-h" style="min-height:70px"></textarea></div><div><label>Body</label><textarea class="in" id="wt-b" style="min-height:90px"></textarea></div><button class="btn pri" id="wt-s" style="align-self:flex-start">${ic('send')}পাঠান</button></div></div><div class="g p"><div class="h3">উত্তর</div><div id="wt-o" class="mut">এখনো পাঠানো হয়নি</div></div></div>`;
+  $('#wt-s').onclick = async () => {
+    const m = $('#wt-m').value; let p = $('#wt-p').value.trim() || '/'; if (!p.startsWith('/')) p = '/' + p;
+    const headers = {}; $('#wt-h').value.split('\n').forEach((l) => { const i = l.indexOf(':'); if (i > 0) headers[l.slice(0, i).trim()] = l.slice(i + 1).trim(); });
+    const t0 = performance.now(); let out;
+    try {
+      const r = await fetch('/w/' + w.slug + p, { method: m, headers, body: ['GET', 'HEAD', 'OPTIONS'].includes(m) ? undefined : $('#wt-b').value, credentials: 'omit' });
+      const txt = await r.text(), ms = Math.round(performance.now() - t0);
+      let body = txt.slice(0, 20000); try { body = JSON.stringify(JSON.parse(txt), null, 2).slice(0, 20000); } catch { /* plain text */ }
+      const hd = [...r.headers].map(([k, v]) => `${k}: ${v}`).join('\n');
+      out = `<div class="row wrap" style="margin-bottom:10px"><span class="pill st${String(r.status)[0]}">${r.status} ${esc(r.statusText)}</span><span class="pill">${ms} ms</span><span class="pill">${txt.length} B</span></div><div class="h3">Headers</div><pre class="term" style="height:auto;max-height:140px">${esc(hd)}</pre><div class="h3" style="margin-top:12px">Body</div><pre class="term" style="height:auto;max-height:300px">${esc(body)}</pre>`;
+    } catch (e) { out = `<div style="color:var(--bad)">${esc(e.message)}</div>`; }
+    $('#wt-o').innerHTML = out; wkLoad(false);
+  };
+}
+
+async function wkNew() {
+  if (!W.tpl) { const r = await api('/worker-templates'); W.tpl = r.ok ? r.templates : []; }
+  const o = modal(`<h3 style="margin:0 0 14px">নতুন Worker</h3><div class="col">
+    <div><label>নাম</label><input class="in" id="nw-n" placeholder="my-api" autocomplete="off"><div class="dim mono" id="nw-u" style="margin-top:6px"></div></div>
+    <div class="row wrap"><div style="flex:1;min-width:180px"><label>টেমপ্লেট</label><select class="in" id="nw-t">${W.tpl.map((t) => `<option value="${t.key}">${esc(t.name)}</option>`).join('')}</select></div><div style="align-self:flex-end"><input type="file" id="nw-f" accept=".js,.mjs,.cjs,.txt" hidden><button class="btn" id="nw-up">${ic('upload')}worker.js আপলোড</button></div></div>
+    <div><label>কোড</label><textarea class="in" id="nw-c" spellcheck="false" style="min-height:190px"></textarea></div>
+    <div><label>ENV (প্রতি লাইনে KEY=value; নামে key/token/secret/pass থাকলে গোপন হবে)</label><textarea class="in" id="nw-e" spellcheck="false" style="min-height:60px" placeholder="GREETING=hello"></textarea></div>
+    <div class="row" style="justify-content:flex-end"><button class="btn" data-c>বাতিল</button><button class="btn pri" id="nw-s">${ic('bolt')}তৈরি ও চালু করুন</button></div></div>`);
+  o.firstElementChild.style.width = 'min(720px,100%)';
+  const fill = () => { const t = W.tpl.find((x) => x.key === $('#nw-t', o).value); $('#nw-c', o).value = t ? t.code : ''; };
+  const prev = () => { const s = slugify($('#nw-n', o).value); $('#nw-u', o).textContent = location.origin + '/w/' + (s || '...'); };
+  fill(); prev();
+  $('#nw-t', o).onchange = fill; $('#nw-n', o).oninput = prev;
+  $('#nw-up', o).onclick = () => $('#nw-f', o).click();
+  $('#nw-f', o).onchange = (e) => { const f = e.target.files[0]; if (!f) return; if (f.size > 900000) return toast('ফাইল অনেক বড়', 'bad'); const rd = new FileReader(); rd.onload = () => { $('#nw-c', o).value = String(rd.result); if (!$('#nw-n', o).value) { $('#nw-n', o).value = f.name.replace(/\.[^.]+$/, ''); prev(); } }; rd.readAsText(f); };
+  $('[data-c]', o).onclick = () => o.remove();
+  $('#nw-s', o).onclick = async () => {
+    const env = $('#nw-e', o).value.split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('#')).map((l) => { const i = l.indexOf('='); return i > 0 ? { key: l.slice(0, i).trim(), value: l.slice(i + 1).trim(), secret: /key|token|secret|pass/i.test(l.slice(0, i)) } : null; }).filter(Boolean);
+    const b = $('#nw-s', o); b.disabled = true;
+    const r = await api('/workers', 'POST', { name: $('#nw-n', o).value.trim(), code: $('#nw-c', o).value, env });
+    b.disabled = false;
+    if (!r.ok) return toast(r.error, 'bad');
+    o.remove();
+    toast(r.deploy.ok ? 'Worker চালু হয়েছে' : 'তৈরি হয়েছে কিন্তু চালু হয়নি: ' + String(r.deploy.error).split('\n')[0], r.deploy.ok ? 'ok' : 'bad');
+    W.id = r.id; W.tab = r.deploy.ok ? 'overview' : 'code'; W.stat = null; wkLoad(true);
+  };
+  $('#nw-n', o).focus();
+}
 
 function newBot() {
   const o = modal(`<h3 style="margin:0 0 16px">নতুন বট</h3><div class="col">
