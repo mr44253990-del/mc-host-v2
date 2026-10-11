@@ -68,4 +68,82 @@ export default {
 };
 `,
   },
+
+  {
+    key: 'multi-api', name: 'মাল্টি-ফাইল API (router + utils)', desc: 'একাধিক ফাইল, import, ENV ও KV একসাথে',
+    files: [
+      { path: 'worker.js', content: `import { route } from './lib/router.js';
+import { json } from './lib/utils.js';
+
+export default {
+  async fetch(request, env, ctx) {
+    try {
+      return await route(request, env);
+    } catch (e) {
+      console.error('ত্রুটি:', e.message);
+      return json({ ok: false, error: 'internal error' }, 500);
+    }
+  },
+};
+` },
+      { path: 'lib/router.js', content: `import { json, cors } from './utils.js';
+
+export async function route(request, env) {
+  const url = new URL(request.url);
+  if (request.method === 'OPTIONS') return cors(new Response(null, { status: 204 }));
+  switch (url.pathname) {
+    case '/':
+      return json({ ok: true, name: 'multi-file worker', routes: ['/hello?name=', '/env', '/count'] });
+    case '/hello':
+      return json({ message: 'Hello ' + (url.searchParams.get('name') || env.DEFAULT_NAME || 'world') });
+    case '/env': // শুধু নাম দেখায়, ভ্যালু নয়
+      return json({ keys: Object.keys(env).filter((k) => k !== 'KV' && k !== 'ASSETS') });
+    case '/count': {
+      const n = Number((await env.KV.get('count')) || 0) + 1;
+      await env.KV.put('count', String(n));
+      return json({ count: n });
+    }
+    default:
+      return json({ ok: false, error: 'Not found' }, 404);
+  }
+}
+` },
+      { path: 'lib/utils.js', content: `export const cors = (res) => { res.headers.set('access-control-allow-origin', '*'); res.headers.set('access-control-allow-headers', '*'); return res; };
+
+export const json = (data, status = 200) => cors(new Response(JSON.stringify(data, null, 2), {
+  status,
+  headers: { 'content-type': 'application/json; charset=utf-8' },
+}));
+` },
+    ],
+  },
+  {
+    key: 'static-site', name: 'স্ট্যাটিক সাইট + API (ASSETS)', desc: 'public/ ফোল্ডারের HTML/CSS/JS সার্ভ করে, সাথে /api/time',
+    files: [
+      { path: 'worker.js', content: `export default {
+  async fetch(request, env) {
+    const url = new URL(request.url);
+    if (url.pathname === '/api/time') {
+      return new Response(JSON.stringify({ time: new Date().toISOString() }), { headers: { 'content-type': 'application/json' } });
+    }
+    const res = await env.ASSETS.fetch(request);       // public/ ফোল্ডার থেকে
+    if (res.status === 404 && !url.pathname.includes('.')) {
+      return env.ASSETS.fetch(new Request(new URL('/', request.url))); // SPA fallback
+    }
+    return res;
+  },
+};
+` },
+      { path: 'public/index.html', content: `<!DOCTYPE html>
+<html lang="bn"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>আমার সাইট</title><link rel="stylesheet" href="style.css"></head>
+<body><main><h1>স্বাগতম</h1><p id="t">লোড হচ্ছে...</p></main><script src="app.js"></script></body></html>
+` },
+      { path: 'public/style.css', content: `body{margin:0;min-height:100vh;display:grid;place-items:center;font-family:system-ui,sans-serif;background:#0b1020;color:#eef}
+main{padding:32px 40px;border-radius:20px;background:rgba(255,255,255,.07);backdrop-filter:blur(12px);text-align:center}
+` },
+      { path: 'public/app.js', content: `fetch('api/time').then((r) => r.json()).then((d) => { document.getElementById('t').textContent = 'সার্ভারের সময়: ' + d.time; });
+` },
+    ],
+  },
 ];

@@ -1,29 +1,51 @@
 'use strict';
-// Cloudflare Workers-এর মতো: worker.js আপলোড > চালু > /w/<slug> URL, ENV, KV, cron, রিকোয়েস্ট পরিসংখ্যান।
-const { spawn } = require('child_process');
+// Cloudflare Workers-এর মতো: একাধিক ফাইলসহ প্রজেক্ট আপলোড > ডিপ্লয় > /w/<slug> URL, ENV, KV, ASSETS, cron, বিশ্লেষণ।
+const { spawn, spawnSync } = require('child_process');
+const EventEmitter = require('events');
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const { genId } = require('./util');
+const { zip, unzip } = require('./zip');
 
 const HOST = path.join(__dirname, 'worker-host.js');
 const HEAP = Number(process.env.WORKER_HEAP_MB) || 128;
 const REQ_TIMEOUT = 30000;
-const BUCKET = 15 * 60000; // পরিসংখ্যান ১৫ মিনিটের ঝুড়িতে (যেকোনো টাইমজোনে সঠিক "আজ" বের করতে)
+const BUCKET = 15 * 60000;
 const KEEP_DAYS = 31;
+const MAX_FILES = 200, MAX_FILE = 5 * 1024 * 1024, MAX_TOTAL = 25 * 1024 * 1024, KEEP_VERSIONS = 8;
 const SLUG_RE = /^[a-z0-9][a-z0-9-]{0,38}[a-z0-9]$/;
 const ENV_RE = /^[A-Za-z_][A-Za-z0-9_]{0,63}$/;
 const HOP = new Set(['content-length', 'content-encoding', 'transfer-encoding', 'connection', 'keep-alive']);
-
+const TEXT_EXT = new Set(['js', 'mjs', 'cjs', 'ts', 'json', 'md', 'txt', 'html', 'htm', 'css', 'svg', 'xml', 'yml', 'yaml', 'toml', 'env', 'csv', 'map', 'sh', 'sql', 'ini', 'conf', 'log', 'vars', 'gitignore', 'jsx', 'tsx']);
+const LAT_EDGES = [10, 25, 50, 100, 250, 1000];
 const slugify = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40).replace(/-+$/g, '');
 
-class Workers {
+function normPath(p) {
+  const clean = String(p || '/').split('?')[0].split('/').map((s) => (/^\d+$/.test(s) || /^[0-9a-f]{8,}$/i.test(s) || /^[0-9a-f-]{36}$/i.test(s) ? ':id' : s)).join('/');
+  return (clean || '/').slice(0, 80);
+}
+function uaGroup(ua) {
+  const u = String(ua || '').toLowerCase();
+  if (!u) return 'অজানা';
+  if (/bot|crawl|spider|slurp|monitor|uptime/.test(u)) return 'বট/ক্রলার';
+  if (/curl|wget|python|httpie|postman|insomnia|node|axios|go-http|java|okhttp/.test(u)) return 'টুল/স্ক্রিপ্ট';
+  if (/mobile|android|iphone|ipad/.test(u)) return 'মোবাইল';
+  if (/mozilla|chrome|safari|firefox|edge/.test(u)) return 'ডেস্কটপ ব্রাউজার';
+  return 'অন্যান্য';
+}
+
+class Workers extends EventEmitter {
   constructor(store, { max = 10 } = {}) {
+    super();
     this.store = store; this.max = max;
     this.dir = path.join(store.dir, 'workers');
     fs.mkdirSync(this.dir, { recursive: true });
     store.data.workers ||= [];
-    this.rt = new Map();
-    this._n = 0;
+    this.rt = new Map(); this._n = 0; this._rl = new Map(); this.origin = 'http://localhost';
+    this._migrate();
+    store.hooks = { export: () => this.exportAll() };
+    if (store.pendingWorkerFiles) { this.importAll(store.pendingWorkerFiles); store.pendingWorkerFiles = null; }
     this._t = setInterval(() => this._tick(), 5000); this._t.unref();
     this._s = setInterval(() => this.flushStats(), 20000); this._s.unref();
   }
@@ -31,30 +53,185 @@ class Workers {
   all() { return (this.store.data.workers ||= []); }
   get(id) { return this.all().find((w) => w.id === id); }
   bySlug(s) { return this.all().find((w) => w.slug === s); }
-  codeFile(id) { return path.join(this.dir, id + '.mjs'); }
-  prevFile(id) { return path.join(this.dir, id + '.prev.mjs'); }
+  dirOf(id) { return path.join(this.dir, id); }
+  verDir(id) { return path.join(this.dir, id + '.v'); }
   kvFile(id) { return path.join(this.dir, id + '.kv.json'); }
   statsFile(id) { return path.join(this.dir, id + '.stats.json'); }
-  readCode(id) { try { return fs.readFileSync(this.codeFile(id), 'utf8'); } catch { return ''; } }
-  hasPrev(id) { return fs.existsSync(this.prevFile(id)); }
-  writeCode(id, code) {
-    const f = this.codeFile(id);
-    if (fs.existsSync(f)) fs.copyFileSync(f, this.prevFile(id));
-    fs.writeFileSync(f, code);
-    fs.rmSync(f.replace(/\.mjs$/, '.cjs'), { force: true });
+
+  _migrate() {
+    for (const w of this.all()) {
+      const d = this.dirOf(w.id), old = path.join(this.dir, w.id + '.mjs');
+      if (fs.existsSync(old) && !fs.existsSync(d)) {
+        fs.mkdirSync(d, { recursive: true });
+        fs.renameSync(old, path.join(d, 'worker.js')); w.entry = 'worker.js';
+        for (const x of ['.prev.mjs', '.cjs']) fs.rmSync(path.join(this.dir, w.id + x), { force: true });
+      } else fs.mkdirSync(d, { recursive: true });
+    }
+    this.store.save();
   }
 
+  // ---------- নিরাপদ পাথ ----------
+  safeRel(rel) {
+    const r = String(rel || '').replace(/\\/g, '/').replace(/^\/+/, '').replace(/\/+$/, '');
+    if (!r || r.length > 180) throw new Error('ফাইলের পাথ সঠিক নয়');
+    const parts = r.split('/');
+    if (parts.length > 8) throw new Error('ফোল্ডার অনেক গভীর');
+    for (const p of parts) if (!p || p === '.' || p === '..' || p.length > 100 || /[\0<>:"|?*]/.test(p) || p === 'node_modules' || p === '.git') throw new Error('অনুমোদিত নয়: ' + p);
+    return parts.join('/');
+  }
+  absOf(id, rel) {
+    const root = this.dirOf(id), f = path.join(root, this.safeRel(rel));
+    if (!f.startsWith(root + path.sep)) throw new Error('পাথ সঠিক নয়');
+    return f;
+  }
+
+  // ---------- ফাইল ম্যানেজার ----------
+  _walk(root) {
+    const out = [];
+    const rec = (d, pre) => {
+      let ents; try { ents = fs.readdirSync(d, { withFileTypes: true }); } catch { return; }
+      for (const e of ents) {
+        const rel = pre ? pre + '/' + e.name : e.name;
+        if (e.isDirectory()) { if (e.name !== 'node_modules' && e.name !== '.git') rec(path.join(d, e.name), rel); } else if (e.isFile()) { const st = fs.statSync(path.join(d, e.name)); out.push({ path: rel, size: st.size, mtime: st.mtimeMs }); }
+      }
+    };
+    rec(root, '');
+    return out.sort((a, b) => a.path.localeCompare(b.path));
+  }
+  listFiles(id) { return this._walk(this.dirOf(id)); }
+  isText(rel, buf) { const ext = rel.split('.').pop().toLowerCase(); return TEXT_EXT.has(ext) || !buf.subarray(0, 4096).includes(0); }
+  readFile(id, rel) {
+    const f = this.absOf(id, rel); const st = fs.statSync(f); const buf = fs.readFileSync(f);
+    const p = this.safeRel(rel);
+    if (!this.isText(p, buf)) return { path: p, size: st.size, binary: true };
+    if (st.size > 1024 * 1024) return { path: p, size: st.size, tooLarge: true };
+    return { path: p, size: st.size, text: buf.toString('utf8') };
+  }
+  writeFile(id, rel, data) {
+    const buf = Buffer.isBuffer(data) ? data : Buffer.from(String(data), 'utf8');
+    const f = this.absOf(id, rel);
+    if (buf.length > MAX_FILE) throw new Error('ফাইল ৫MB এর বেশি');
+    const files = this.listFiles(id); const exists = files.find((x) => x.path === this.safeRel(rel));
+    if (!exists && files.length >= MAX_FILES) throw new Error(`সর্বোচ্চ ${MAX_FILES}টি ফাইল`);
+    const total = files.reduce((s, x) => s + x.size, 0) - (exists ? exists.size : 0) + buf.length;
+    if (total > MAX_TOTAL) throw new Error('Worker-এর মোট সাইজ ২৫MB এর বেশি');
+    fs.mkdirSync(path.dirname(f), { recursive: true });
+    fs.writeFileSync(f, buf);
+    const w = this.get(id); if (w) { w.updatedAt = Date.now(); this.store.save(); }
+  }
+  deleteFile(id, rel) {
+    const f = this.absOf(id, rel);
+    if (!fs.existsSync(f)) throw new Error('ফাইল পাওয়া যায়নি');
+    fs.rmSync(f, { recursive: true, force: true });
+    // ফাঁকা ফোল্ডার সরানো
+    let d = path.dirname(f); const root = this.dirOf(id);
+    while (d !== root && d.startsWith(root)) { try { if (fs.readdirSync(d).length) break; fs.rmdirSync(d); } catch { break; } d = path.dirname(d); }
+  }
+  moveFile(id, from, to) {
+    const a = this.absOf(id, from), b = this.absOf(id, to);
+    if (!fs.existsSync(a)) throw new Error('ফাইল পাওয়া যায়নি');
+    if (fs.existsSync(b)) throw new Error('এই নামে আগেই আছে');
+    fs.mkdirSync(path.dirname(b), { recursive: true });
+    fs.renameSync(a, b);
+  }
+  syntaxCheck(rel, content) {
+    if (!/\.(m?js|cjs)$/.test(rel)) return null;
+    const esm = rel.endsWith('.mjs') || (!rel.endsWith('.cjs') && /^\s*(export|import)\s/m.test(content));
+    const tmp = path.join(os.tmpdir(), `wk-${genId()}${esm ? '.mjs' : '.cjs'}`);
+    try {
+      fs.writeFileSync(tmp, content);
+      const r = spawnSync(process.execPath, ['--check', tmp], { timeout: 8000, encoding: 'utf8' });
+      return r.status === 0 ? null : String(r.stderr || 'সিনট্যাক্স ত্রুটি').split('\n').filter(Boolean).slice(0, 4).join('\n').replace(tmp, rel);
+    } finally { fs.rmSync(tmp, { force: true }); }
+  }
+  applyChanges(id, changes) {
+    let n = 0;
+    for (const c of changes) { this.writeFile(id, c.path, String(c.content ?? '')); n++; }
+    return n;
+  }
+
+  exportZip(id) {
+    const root = this.dirOf(id);
+    return zip(this.listFiles(id).map((f) => ({ name: f.path, data: fs.readFileSync(path.join(root, f.path)) })));
+  }
+  importZip(id, buf, { replace = false } = {}) {
+    let entries = unzip(buf, { maxFiles: MAX_FILES + 50, maxTotal: MAX_TOTAL });
+    const tops = new Set(entries.map((e) => e.name.split('/')[0]));
+    if (tops.size === 1 && entries.every((e) => e.name.includes('/'))) entries = entries.map((e) => ({ ...e, name: e.name.split('/').slice(1).join('/') }));
+    const valid = []; let skipped = 0;
+    for (const e of entries) { try { valid.push({ rel: this.safeRel(e.name), data: e.data }); } catch { skipped++; } }
+    if (replace) { fs.rmSync(this.dirOf(id), { recursive: true, force: true }); fs.mkdirSync(this.dirOf(id), { recursive: true }); }
+    let written = 0;
+    for (const v of valid) { try { this.writeFile(id, v.rel, v.data); written++; } catch { skipped++; } }
+    return { written, skipped };
+  }
+  exportAll() {
+    const out = {};
+    for (const w of this.all()) { out[w.id] = {}; for (const f of this.listFiles(w.id)) { try { out[w.id][f.path] = fs.readFileSync(path.join(this.dirOf(w.id), f.path)).toString('base64'); } catch { /* skip */ } } }
+    return out;
+  }
+  importAll(map) {
+    for (const [id, files] of Object.entries(map || {})) {
+      if (!this.get(id)) continue;
+      fs.mkdirSync(this.dirOf(id), { recursive: true });
+      if (typeof files === 'string') { fs.writeFileSync(path.join(this.dirOf(id), 'worker.js'), files); continue; }
+      for (const [rel, b64] of Object.entries(files)) { try { const f = this.absOf(id, rel); fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, Buffer.from(b64, 'base64')); } catch { /* skip */ } }
+    }
+  }
+
+  // ---------- এন্ট্রি ও package.json ----------
+  entryOf(w) {
+    const files = this.listFiles(w.id).map((f) => f.path);
+    for (const c of [w.entry, 'worker.js', 'index.js', 'worker.mjs', 'index.mjs', 'src/index.js', 'src/worker.js', 'main.js']) if (c && files.includes(c)) return c;
+    return files.find((f) => /\.(m?js|cjs)$/.test(f)) || null;
+  }
+  _ensureType(w, entry) {
+    const dir = this.dirOf(w.id), pj = path.join(dir, 'package.json');
+    let auto = true;
+    if (fs.existsSync(pj)) { try { auto = !!JSON.parse(fs.readFileSync(pj, 'utf8'))['x-auto']; } catch { auto = false; } }
+    if (!auto) return;
+    let src = ''; try { src = fs.readFileSync(path.join(dir, entry), 'utf8'); } catch { /* none */ }
+    const cjs = /\bmodule\.exports\b|\bexports\.[A-Za-z_$][\w$]*\s*=/.test(src) && !/^\s*(export|import)\s/m.test(src);
+    fs.writeFileSync(pj, JSON.stringify({ type: cjs ? 'commonjs' : 'module', private: true, 'x-auto': true }));
+  }
+
+  // ---------- ভার্সন ইতিহাস ----------
+  _size(dir) { return this._walk(dir).reduce((s, f) => s + f.size, 0); }
+  snapshot(id, label = 'ok') {
+    const ts = Date.now(), vd = this.verDir(id);
+    fs.mkdirSync(vd, { recursive: true });
+    fs.cpSync(this.dirOf(id), path.join(vd, `${ts}_${label}`), { recursive: true });
+    const names = fs.readdirSync(vd).sort().reverse();
+    for (const n of names.slice(KEEP_VERSIONS)) fs.rmSync(path.join(vd, n), { recursive: true, force: true });
+    return ts;
+  }
+  versions(id) {
+    let names = []; try { names = fs.readdirSync(this.verDir(id)); } catch { /* none */ }
+    return names.filter((n) => /^\d+_(ok|failed|manual)$/.test(n)).sort().reverse().map((n) => {
+      const d = path.join(this.verDir(id), n), fl = this._walk(d);
+      return { name: n, ts: Number(n.split('_')[0]), label: n.split('_')[1], files: fl.length, size: fl.reduce((s, f) => s + f.size, 0) };
+    });
+  }
+  restoreVersion(id, name) {
+    if (!/^\d+_(ok|failed|manual)$/.test(name)) throw new Error('ভার্সন সঠিক নয়');
+    const src = path.join(this.verDir(id), name);
+    if (!fs.existsSync(src)) throw new Error('ভার্সন পাওয়া যায়নি');
+    fs.rmSync(this.dirOf(id), { recursive: true, force: true });
+    fs.cpSync(src, this.dirOf(id), { recursive: true });
+  }
+
+  // ---------- যাচাই ----------
   _rt(id) {
-    if (!this.rt.has(id)) this.rt.set(id, { state: 'stopped', proc: null, pending: new Map(), logs: [], recent: [], lat: [], seq: 0, inflight: 0, lastBeat: 0, startedAt: 0, fails: 0, error: '', manual: false, waiters: [], timer: null, restartTimer: null, lastCron: 0, kvKeys: 0, stats: null, dirty: false, readyAt: 0 });
+    if (!this.rt.has(id)) this.rt.set(id, { state: 'stopped', proc: null, pending: new Map(), logs: [], recent: [], lat: [], win: [], seq: 0, inflight: 0, lastBeat: 0, startedAt: 0, fails: 0, error: '', manual: false, waiters: [], timer: null, restartTimer: null, lastCron: 0, kvKeys: 0, stats: null, dirty: false, readyAt: 0, downNotified: false, lastAlert: 0, fc: null });
     return this.rt.get(id);
   }
 
   view(w) {
     const rt = this._rt(w.id);
-    return { id: w.id, name: w.name, slug: w.slug, enabled: !!w.enabled, cronMin: w.cronMin || 0, envCount: (w.env || []).length, createdAt: w.createdAt, updatedAt: w.updatedAt, state: rt.state, error: rt.error, startedAt: rt.startedAt, inflight: rt.inflight, hasPrev: this.hasPrev(w.id), kvKeys: rt.kvKeys };
+    if (!rt.fc || Date.now() - rt.fc.t > 10000) { const fl = this.listFiles(w.id); rt.fc = { t: Date.now(), count: fl.length, size: fl.reduce((s, f) => s + f.size, 0) }; }
+    return { id: w.id, name: w.name, slug: w.slug, enabled: !!w.enabled, cronMin: w.cronMin || 0, rateLimit: w.rateLimit || 0, entry: this.entryOf(w) || w.entry || 'worker.js', envCount: (w.env || []).length, fileCount: rt.fc.count, totalSize: rt.fc.size, createdAt: w.createdAt, updatedAt: w.updatedAt, state: rt.state, error: rt.error, startedAt: rt.startedAt, inflight: rt.inflight, versions: this.versions(w.id).length, kvKeys: rt.kvKeys };
   }
 
-  // ---------- validation helpers ----------
   cleanEnv(list, old = []) {
     const out = []; const seen = new Set();
     for (const e of (Array.isArray(list) ? list : []).slice(0, 50)) {
@@ -80,21 +257,34 @@ class Workers {
   }
 
   // ---------- CRUD ----------
-  create({ name, slug, code, env, cronMin }) {
+  // files: [{path, content}] অথবা code (এক ফাইল = worker.js)
+  create({ name, slug, code, files, env, cronMin, entry }) {
     if (this.all().length >= this.max) throw new Error(`সর্বোচ্চ ${this.max}টি Worker`);
     const n = String(name || '').trim().slice(0, 60);
     if (!n) throw new Error('নাম দিন');
-    if (!String(code || '').trim()) throw new Error('worker.js ফাঁকা');
+    const list = Array.isArray(files) && files.length ? files : [{ path: 'worker.js', content: String(code || '') }];
+    if (!list.some((f) => String(f.content || '').trim())) throw new Error('worker.js ফাঁকা');
     if (slug && !SLUG_RE.test(String(slug))) throw new Error('URL নাম: ছোট হাতের a-z, 0-9, হাইফেন (২-৪০ অক্ষর)');
     if (slug && this.bySlug(slug)) throw new Error('এই URL নাম আগেই আছে');
-    const w = { id: genId(), name: n, slug: slug || this.uniqueSlug(n), enabled: true, env: this.cleanEnv(env), cronMin: Math.max(0, Math.min(1440, Number(cronMin) || 0)), createdAt: Date.now(), updatedAt: Date.now() };
+    const w = { id: genId(), name: n, slug: slug || this.uniqueSlug(n), enabled: true, env: this.cleanEnv(env), cronMin: Math.max(0, Math.min(1440, Number(cronMin) || 0)), rateLimit: 0, entry: entry || list[0].path, createdAt: Date.now(), updatedAt: Date.now() };
+    fs.mkdirSync(this.dirOf(w.id), { recursive: true });
     this.all().push(w);
-    this.writeCode(w.id, String(code));
+    try { for (const f of list) this.writeFile(w.id, f.path, String(f.content ?? '')); } catch (e) { this.store.data.workers = this.all().filter((x) => x.id !== w.id); fs.rmSync(this.dirOf(w.id), { recursive: true, force: true }); throw e; }
     this.store.save();
     return w;
   }
 
-  update(w, { name, slug, cronMin }) {
+  clone(id, name) {
+    const w = this.get(id); if (!w) throw new Error('Worker নেই');
+    if (this.all().length >= this.max) throw new Error(`সর্বোচ্চ ${this.max}টি Worker`);
+    const c = { ...JSON.parse(JSON.stringify(w)), id: genId(), name: String(name || w.name + ' copy').slice(0, 60), enabled: false, createdAt: Date.now(), updatedAt: Date.now() };
+    c.slug = this.uniqueSlug(c.name, c.id);
+    fs.cpSync(this.dirOf(id), this.dirOf(c.id), { recursive: true });
+    this.all().push(c); this.store.save();
+    return c;
+  }
+
+  update(w, { name, slug, cronMin, entry, rateLimit }) {
     if (name !== undefined) { const n = String(name).trim().slice(0, 60); if (!n) throw new Error('নাম ফাঁকা'); w.name = n; }
     if (slug !== undefined && slug !== w.slug) {
       if (!SLUG_RE.test(String(slug))) throw new Error('URL নাম সঠিক নয়');
@@ -102,6 +292,8 @@ class Workers {
       w.slug = slug;
     }
     if (cronMin !== undefined) w.cronMin = Math.max(0, Math.min(1440, Number(cronMin) || 0));
+    if (rateLimit !== undefined) w.rateLimit = Math.max(0, Math.min(100000, Number(rateLimit) || 0));
+    if (entry !== undefined) { const e = this.safeRel(entry); if (!this.listFiles(w.id).some((f) => f.path === e)) throw new Error('এন্ট্রি ফাইল পাওয়া যায়নি'); w.entry = e; }
     w.updatedAt = Date.now();
     this.store.save();
   }
@@ -109,22 +301,25 @@ class Workers {
   async remove(id) {
     await this.stop(id, { keep: true });
     this.store.data.workers = this.all().filter((w) => w.id !== id);
-    for (const f of [this.codeFile(id), this.prevFile(id), this.kvFile(id), this.statsFile(id), this.codeFile(id).replace(/\.mjs$/, '.cjs')]) fs.rmSync(f, { force: true });
+    for (const f of [this.dirOf(id), this.verDir(id), this.kvFile(id), this.statsFile(id)]) fs.rmSync(f, { recursive: true, force: true });
     this.rt.delete(id);
     this.store.save();
   }
 
-  // ---------- lifecycle ----------
+  // ---------- জীবনচক্র ----------
   _spawn(w) {
     const rt = this._rt(w.id);
     clearTimeout(rt.restartTimer);
     rt.state = 'starting'; rt.error = ''; rt.startedAt = Date.now(); rt.lastBeat = Date.now(); rt.manual = false; rt.readyAt = 0; rt.loadFailed = false;
-    const cfg = { file: this.codeFile(w.id), kv: this.kvFile(w.id), name: w.name, slug: w.slug, env: Object.fromEntries((w.env || []).map((e) => [e.key, e.value])) };
-    const proc = spawn(process.execPath, [`--max-old-space-size=${HEAP}`, HOST], { cwd: this.dir, env: { PATH: process.env.PATH, NODE_ENV: 'production', WK_CONFIG: JSON.stringify(cfg) }, stdio: ['ignore', 'pipe', 'pipe', 'ipc'] });
+    const entry = this.entryOf(w);
+    if (!entry) { this._fail(rt, w, 'এন্ট্রি ফাইল নেই। worker.js (বা index.js) তৈরি করুন।', false); return; }
+    this._ensureType(w, entry);
+    const cfg = { file: path.join(this.dirOf(w.id), entry), dir: this.dirOf(w.id), kv: this.kvFile(w.id), name: w.name, slug: w.slug, env: Object.fromEntries((w.env || []).map((e) => [e.key, e.value])) };
+    const proc = spawn(process.execPath, [`--max-old-space-size=${HEAP}`, HOST], { cwd: this.dirOf(w.id), env: { PATH: process.env.PATH, NODE_ENV: 'production', WK_CONFIG: JSON.stringify(cfg) }, stdio: ['ignore', 'pipe', 'pipe', 'ipc'] });
     rt.proc = proc;
     this._pipe(proc.stdout, rt, false); this._pipe(proc.stderr, rt, true);
     clearTimeout(rt.timer);
-    rt.timer = setTimeout(() => { if (rt.state === 'starting' && rt.proc === proc) { rt.error = 'লোড হতে ১০ সেকেন্ডের বেশি লাগছে (top-level await আটকে?)'; this._fail(rt, w, rt.error, true); try { proc.kill('SIGKILL'); } catch { /* gone */ } } }, 10000);
+    rt.timer = setTimeout(() => { if (rt.state === 'starting' && rt.proc === proc) { this._fail(rt, w, 'লোড হতে ১০ সেকেন্ডের বেশি লাগছে (top-level await আটকে?)', true); try { proc.kill('SIGKILL'); } catch { /* gone */ } } }, 10000);
     proc.on('message', (m) => this._msg(w, rt, m));
     proc.on('error', (e) => this._fail(rt, w, e.message, true));
     proc.on('exit', (code, sig) => {
@@ -136,9 +331,10 @@ class Workers {
       if (rt.loadFailed) return;
       if (rt.state === 'starting') return this._fail(rt, w, rt.error || `লোড হয়নি (exit ${code ?? sig})`, true);
       rt.fails++;
-      rt.error = `ক্র্যাশ (exit ${code ?? sig})`;
+      rt.error = rt.error || `ক্র্যাশ (exit ${code ?? sig})`;
       rt.state = 'error';
       this._log(rt, '! ' + rt.error);
+      if (!rt.downNotified) { rt.downNotified = true; this.emit('event', { type: 'down', worker: this.view(w), reason: rt.error }); }
       const w2 = this.get(w.id);
       if (w2 && w2.enabled) rt.restartTimer = setTimeout(() => { const x = this.get(w.id); if (x && x.enabled && !rt.proc) this._spawn(x); }, Math.min(30000, 1000 * 2 ** Math.min(rt.fails, 5)));
     });
@@ -148,6 +344,7 @@ class Workers {
     rt.state = 'error'; rt.error = msg; if (loadError) rt.loadFailed = true;
     this._log(rt, '! ' + msg.split('\n')[0]);
     const ws = rt.waiters; rt.waiters = [];
+    if (!ws.length && !rt.downNotified && !rt.manual) { rt.downNotified = true; this.emit('event', { type: 'down', worker: this.view(w), reason: msg.split('\n')[0] }); }
     ws.forEach((f) => f({ ok: false, error: msg }));
     if (loadError && rt.proc) { try { rt.proc.kill('SIGKILL'); } catch { /* gone */ } }
   }
@@ -158,6 +355,7 @@ class Workers {
     else if (m.t === 'ready') {
       clearTimeout(rt.timer); rt.state = 'running'; rt.error = ''; rt.readyAt = Date.now(); rt.lastBeat = Date.now(); rt.kvKeys = m.kv || 0;
       this._log(rt, 'চালু হয়েছে');
+      if (rt.downNotified) { rt.downNotified = false; this.emit('event', { type: 'up', worker: this.view(w) }); }
       const ws = rt.waiters; rt.waiters = []; ws.forEach((f) => f({ ok: true }));
       setTimeout(() => { if (rt.state === 'running') rt.fails = 0; }, 60000).unref();
     } else if (m.t === 'fatal') { clearTimeout(rt.timer); this._fail(rt, w, m.message || 'লোড ব্যর্থ', true); }
@@ -165,8 +363,8 @@ class Workers {
     else if (m.t === 'res') {
       const p = rt.pending.get(m.id); if (!p) return;
       rt.pending.delete(m.id); clearTimeout(p.timer);
-      if (m.error) p.reject(Object.assign(new Error(m.error), { code: 500 }));
-      else p.resolve({ status: m.status, headers: m.headers, body: Buffer.from(m.body || '', 'base64') });
+      if (m.error) p.reject(Object.assign(new Error(m.error), { code: 500, cpu: m.cpu }));
+      else p.resolve({ status: m.status, headers: m.headers, body: Buffer.from(m.body || '', 'base64'), cpu: m.cpu || 0 });
     }
   }
 
@@ -186,35 +384,29 @@ class Workers {
 
   logs(id) { return this._rt(id).logs.slice(-200); }
 
-  // চালু করে ready/ব্যর্থ না হওয়া পর্যন্ত অপেক্ষা
   async _startWait(w) {
     await this.stop(w.id, { keep: true });
     const rt = this._rt(w.id);
     return new Promise((resolve) => { rt.waiters.push(resolve); this._spawn(w); });
   }
 
-  // নতুন কোডসহ নিরাপদ ডিপ্লয়: লোড ব্যর্থ হলে আগের কোড ফেরত
-  async deploy(id, newCode) {
+  // ডিপ্লয়: ফাইলগুলো ডিস্কে আগেই আছে। সফল হলে সংস্করণ সেভ; ব্যর্থ হলে শেষ ভালো সংস্করণ ফেরত
+  async deploy(id) {
     const w = this.get(id); if (!w) return { ok: false, error: 'Worker নেই' };
-    const prevCode = this.readCode(id);
-    if (newCode !== undefined) this.writeCode(id, newCode);
     w.enabled = true; w.updatedAt = Date.now(); this.store.save();
     const r = await this._startWait(w);
-    if (!r.ok && newCode !== undefined && prevCode) {
-      fs.writeFileSync(this.codeFile(id), prevCode);
+    if (r.ok) { this.snapshot(id, 'ok'); return r; }
+    const good = this.versions(id).find((v) => v.label === 'ok');
+    if (good) {
+      this.snapshot(id, 'failed');
+      this.restoreVersion(id, good.name);
       await this._startWait(w).catch(() => {});
       return { ok: false, error: r.error, rolledBack: true };
     }
     return r;
   }
 
-  async rollback(id) {
-    if (!this.hasPrev(id)) return { ok: false, error: 'আগের সংস্করণ নেই' };
-    const cur = this.readCode(id); const prev = fs.readFileSync(this.prevFile(id), 'utf8');
-    fs.writeFileSync(this.codeFile(id), prev); fs.writeFileSync(this.prevFile(id), cur);
-    return this.deploy(id);
-  }
-
+  async restore(id, name) { this.restoreVersion(id, name); return this.deploy(id); }
   async start(id) { const w = this.get(id); if (!w) return { ok: false, error: 'Worker নেই' }; w.enabled = true; this.store.save(); return this._startWait(w); }
   async restart(id) { return this.start(id); }
 
@@ -224,7 +416,7 @@ class Workers {
       if (w && !keep) { w.enabled = false; this.store.save(); }
       rt.manual = true; clearTimeout(rt.restartTimer); clearTimeout(rt.timer);
       const p = rt.proc;
-      if (!p) { rt.state = 'stopped'; rt.error = keep ? rt.error : ''; return resolve(); }
+      if (!p) { rt.state = 'stopped'; if (!keep) rt.error = ''; return resolve(); }
       p.once('exit', () => resolve());
       setTimeout(resolve, 4000).unref();
       try { p.send({ t: 'shutdown' }); } catch { /* ipc closed */ }
@@ -238,20 +430,31 @@ class Workers {
 
   _tick() {
     this._n++;
+    const now = Date.now();
+    for (const [k, v] of this._rl) if (v.reset < now) this._rl.delete(k);
     for (const w of this.all()) {
       const rt = this._rt(w.id);
-      if (rt.state === 'running' && rt.proc && Date.now() - rt.lastBeat > 20000) {
+      if (rt.state === 'running' && rt.proc && now - rt.lastBeat > 20000) {
         this._log(rt, '! event loop আটকে গিয়েছিল, রিস্টার্ট');
         rt.error = 'event loop আটকে ছিল'; try { rt.proc.kill('SIGKILL'); } catch { /* gone */ }
       }
-      if (this._n % 3 === 0 && w.cronMin > 0 && rt.state === 'running' && Date.now() - (rt.lastCron || rt.readyAt) >= w.cronMin * 60000) {
-        rt.lastCron = Date.now();
+      if (this._n % 3 === 0 && w.cronMin > 0 && rt.state === 'running' && now - (rt.lastCron || rt.readyAt) >= w.cronMin * 60000) {
+        rt.lastCron = now;
         try { rt.proc.send({ t: 'cron', cron: `every ${w.cronMin}m` }); } catch { /* ipc closed */ }
+      }
+      // ত্রুটির হার সতর্কতা: গত ৫ মিনিটে ≥২০ রিকোয়েস্টের ≥৫০% 5xx
+      if (this._n % 6 === 0) {
+        rt.win = rt.win.filter((x) => now - x.t < 300000);
+        const err = rt.win.filter((x) => x.err).length;
+        if (rt.win.length >= 20 && err / rt.win.length >= 0.5 && now - rt.lastAlert > 1800000) {
+          rt.lastAlert = now;
+          this.emit('event', { type: 'errorrate', worker: this.view(w), total: rt.win.length, errors: err });
+        }
       }
     }
   }
 
-  // ---------- ইনকামিং রিকোয়েস্ট ----------
+  // ---------- রিকোয়েস্ট ----------
   _call(rt, payload) {
     return new Promise((resolve, reject) => {
       const id = ++rt.seq;
@@ -261,16 +464,43 @@ class Workers {
     });
   }
 
+  _limited(w, ip) {
+    if (!w.rateLimit) return false;
+    const k = w.id + '|' + ip, now = Date.now();
+    let e = this._rl.get(k);
+    if (!e || e.reset < now) { e = { n: 0, reset: now + 60000 }; this._rl.set(k, e); }
+    return ++e.n > w.rateLimit;
+  }
+
+  // অভ্যন্তরীণ: HTTP ছাড়াই রিকোয়েস্ট চালানো (টেলিগ্রাম টেস্ট ইত্যাদি)
+  async _dispatch(w, { method, url, headers, body, ip, path: p, ua, skipLimit }) {
+    const rt = this._rt(w.id);
+    const t0 = Date.now();
+    const done = (out, kind, err = '') => { out.ms = Date.now() - t0; this._rec(w, rt, out, kind, method, p, ua, err); return out; };
+    const plain = (status, text) => ({ status, headers: [['content-type', 'text/plain; charset=utf-8']], body: Buffer.from(text), cpu: 0 });
+    if (!w.enabled) return plain(503, 'Worker is stopped');
+    for (let i = 0; i < 50 && rt.state === 'starting'; i++) await new Promise((r) => setTimeout(r, 100));
+    if (rt.state !== 'running' || !rt.proc) return done(plain(503, 'Worker unavailable'), 'unavail', rt.error);
+    if (!skipLimit && this._limited(w, ip)) { const o = plain(429, 'Rate limit exceeded'); o.headers.push(['retry-after', '60']); return done(o, 'limited'); }
+    if (rt.inflight >= 100) return plain(429, 'Too many requests');
+    rt.inflight++;
+    try {
+      const out = await this._call(rt, { method, url, headers, body });
+      return done(out, 'ok');
+    } catch (e) {
+      const err = e.message || 'error';
+      this._log(rt, '! ' + err.split('\n').slice(0, 3).join(' | '));
+      const o = plain(e.code === 504 ? 504 : e.code === 502 ? 502 : 500, e.code === 504 ? 'Worker timed out' : e.code === 502 ? 'Worker unavailable' : 'Worker threw exception');
+      o.cpu = e.cpu || 0;
+      return done(o, e.code === 504 ? 'tmo' : e.code === 502 ? 'unavail' : 'exc', err);
+    } finally { rt.inflight--; }
+  }
+
   async serve(req, res) {
     const w = this.bySlug(req.params.slug);
     if (!w) return res.status(404).type('text').send('Worker not found');
-    const rt = this._rt(w.id);
-    if (!w.enabled) return res.status(503).type('text').send('Worker is stopped');
-    for (let i = 0; i < 50 && rt.state === 'starting'; i++) await new Promise((r) => setTimeout(r, 100));
-    if (rt.state !== 'running' || !rt.proc) { this._rec(w, rt, 503, 0, req, 'unavailable'); return res.status(503).type('text').send('Worker unavailable'); }
-    if (rt.inflight >= 100) return res.status(429).type('text').send('Too many requests');
-
     const origin = `${req.protocol}://${req.get('host')}`;
+    this.origin = origin;
     const rest = String(req.params[0] || '');
     const qs = req.originalUrl.includes('?') ? req.originalUrl.slice(req.originalUrl.indexOf('?')) : '';
     const headers = {};
@@ -283,41 +513,49 @@ class Workers {
     delete headers['x-mch-token'];
     headers['cf-connecting-ip'] = req.ip || '';
     const body = Buffer.isBuffer(req.body) && req.body.length ? req.body.toString('base64') : null;
-
-    const t0 = Date.now(); rt.inflight++;
-    let out; let err = '';
-    try { out = await this._call(rt, { method: req.method, url: `${origin}/${rest}${qs}`, headers, body }); } catch (e) {
-      err = e.message || 'error';
-      this._log(rt, '! ' + err.split('\n').slice(0, 3).join(' | '));
-      out = { status: e.code === 504 ? 504 : e.code === 502 ? 502 : 500, headers: [['content-type', 'text/plain; charset=utf-8']], body: Buffer.from(e.code === 504 ? 'Worker timed out' : e.code === 502 ? 'Worker unavailable' : 'Worker threw exception') };
-    } finally { rt.inflight--; }
-    const ms = Date.now() - t0;
-    this._rec(w, rt, out.status, ms, req, err);
-
+    const out = await this._dispatch(w, { method: req.method, url: `${origin}/${rest}${qs}`, headers, body, ip: req.ip || '', path: '/' + rest, ua: headers['user-agent'] });
     res.status(out.status);
     for (const [k, v] of out.headers) { if (HOP.has(k)) continue; try { res.append(k, v); } catch { /* invalid header */ } }
     res.set('content-length', String(out.body.length));
     res.end(req.method === 'HEAD' ? undefined : out.body);
   }
 
+  // প্যানেল/টেলিগ্রাম থেকে সরাসরি টেস্ট
+  async invoke(id, { method = 'GET', path: p = '/', headers = {}, body = null }) {
+    const w = this.get(id); if (!w) throw new Error('Worker নেই');
+    const pp = p.startsWith('/') ? p : '/' + p;
+    return this._dispatch(w, { method, url: this.origin + pp, headers, body: body ? Buffer.from(body).toString('base64') : null, ip: 'admin', path: pp.split('?')[0], ua: 'mc-host-test', skipLimit: true });
+  }
+
   // ---------- পরিসংখ্যান ----------
   stats(id) {
     const rt = this._rt(id);
-    if (!rt.stats) { try { rt.stats = JSON.parse(fs.readFileSync(this.statsFile(id), 'utf8')); } catch { rt.stats = { t: 0, e: 0, b: {} }; } }
-    return rt.stats;
+    if (!rt.stats) { try { rt.stats = JSON.parse(fs.readFileSync(this.statsFile(id), 'utf8')); } catch { rt.stats = {}; } }
+    const s = rt.stats; s.t ||= 0; s.e ||= 0; s.b ||= {}; s.p ||= {}; s.m ||= {}; s.u ||= {}; s.lh ||= [0, 0, 0, 0, 0, 0, 0];
+    return s;
   }
 
-  // বাকেট: [req, msSum, s2xx, s3xx, s4xx, s5xx]
-  _rec(w, rt, status, ms, req, err) {
+  // বাকেট: [req, ms, 2xx, 3xx, 4xx, 5xx, bytes, cpuMs, exceptions, timeouts]
+  _rec(w, rt, out, kind, method, p, ua, err) {
     const st = this.stats(w.id); const k = Math.floor(Date.now() / BUCKET);
-    const a = (st.b[k] ||= [0, 0, 0, 0, 0, 0]);
+    const a = (st.b[k] ||= [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+    const status = out.status, ms = out.ms;
     a[0]++; a[1] += Math.round(ms);
     a[status >= 500 ? 5 : status >= 400 ? 4 : status >= 300 ? 3 : 2]++;
+    a[6] += out.body ? out.body.length : 0; a[7] += Math.round(out.cpu || 0);
+    if (kind === 'exc') a[8]++; if (kind === 'tmo') a[9]++;
     st.t++; if (status >= 500) st.e++;
+    st.m[method] = (st.m[method] || 0) + 1;
+    const g = uaGroup(ua); st.u[g] = (st.u[g] || 0) + 1;
+    let li = LAT_EDGES.findIndex((e) => ms < e); if (li < 0) li = LAT_EDGES.length; st.lh[li]++;
+    const key = normPath(p);
+    const e = (st.p[key] ||= [0, 0, 0]); e[0]++; if (status >= 500) e[1]++; e[2] += Math.round(ms);
+    const keys = Object.keys(st.p);
+    if (keys.length > 100) { let min = keys[0]; for (const x of keys) if (st.p[x][0] < st.p[min][0]) min = x; if (min !== key) delete st.p[min]; }
     rt.dirty = true;
-    rt.lat.push(ms); if (rt.lat.length > 200) rt.lat.shift();
-    const p = (req.originalUrl || '').slice(0, 120);
-    rt.recent.push({ t: Date.now(), method: req.method, path: p.replace(/^\/w\/[^/?]+/, '') || '/', status, ms, err: err ? err.split('\n')[0].slice(0, 120) : '' });
+    rt.lat.push(ms); if (rt.lat.length > 300) rt.lat.shift();
+    rt.win.push({ t: Date.now(), err: status >= 500 });
+    rt.recent.push({ t: Date.now(), method, path: String(p || '/').slice(0, 120), status, ms, err: err ? err.split('\n')[0].slice(0, 120) : '' });
     if (rt.recent.length > 60) rt.recent.shift();
   }
 
@@ -330,16 +568,17 @@ class Workers {
     }
   }
 
-  // tzMin = JS getTimezoneOffset() (UTC+6 হলে -360)
+  totalRequests() { let n = 0; for (const w of this.all()) n += this.stats(w.id).t; return n; }
+
   agg(ids, tzMin = 0) {
     const off = -Number(tzMin || 0) * 60000, hr = 3600000, day = 86400000, now = Date.now();
     const dayStart = Math.floor((now + off) / day) * day - off;
     const hourStart = Math.floor((now + off) / hr) * hr - off;
-    const z = () => ({ req: 0, err: 0, ms: 0 });
-    const out = { today: z(), yesterday: z(), d7: z(), d30: z(), total: 0, totalErr: 0, hours: [], days: [], codesToday: [0, 0, 0, 0], codes30: [0, 0, 0, 0] };
+    const z = () => ({ req: 0, err: 0, ms: 0, bytes: 0, cpu: 0 });
+    const out = { today: z(), yesterday: z(), d7: z(), d30: z(), total: 0, totalErr: 0, hours: [], days: [], codesToday: [0, 0, 0, 0], codes30: [0, 0, 0, 0], inv: { ok: 0, exc: 0, tmo: 0 }, heat: Array.from({ length: 7 }, () => Array(24).fill(0)) };
     for (let i = 0; i < 24; i++) out.hours.push({ req: 0, err: 0, label: String((((Math.floor((hourStart - (23 - i) * hr + off) / hr)) % 24) + 24) % 24) });
     for (let i = 0; i < 14; i++) { const d = new Date(dayStart - (13 - i) * day + off); out.days.push({ req: 0, err: 0, label: `${d.getUTCDate()}/${d.getUTCMonth() + 1}` }); }
-    const add = (o, a) => { o.req += a[0]; o.err += a[5]; o.ms += a[1]; };
+    const add = (o, a) => { o.req += a[0]; o.err += a[5]; o.ms += a[1]; o.bytes += a[6] || 0; o.cpu += a[7] || 0; };
     for (const id of ids) {
       const st = this.stats(id); out.total += st.t; out.totalErr += st.e;
       for (const [k, a] of Object.entries(st.b)) {
@@ -348,6 +587,8 @@ class Workers {
         const hIdx = Math.floor((hourStart - (Math.floor((t + off) / hr) * hr - off)) / hr);
         if (dIdx < 0 || dIdx > 30) continue;
         add(out.d30, a); for (let c = 0; c < 4; c++) out.codes30[c] += a[2 + c];
+        out.inv.exc += a[8] || 0; out.inv.tmo += a[9] || 0;
+        const d = new Date(t + off); out.heat[d.getUTCDay()][d.getUTCHours()] += a[0];
         if (dIdx < 7) add(out.d7, a);
         if (dIdx === 0) { add(out.today, a); for (let c = 0; c < 4; c++) out.codesToday[c] += a[2 + c]; }
         if (dIdx === 1) add(out.yesterday, a);
@@ -355,13 +596,21 @@ class Workers {
         if (hIdx >= 0 && hIdx < 24) { out.hours[23 - hIdx].req += a[0]; out.hours[23 - hIdx].err += a[5]; }
       }
     }
+    out.inv.ok = Math.max(0, out.d30.req - out.inv.exc - out.inv.tmo);
     return out;
+  }
+
+  extra(id) {
+    const st = this.stats(id);
+    const top = Object.entries(st.p).map(([p, a]) => ({ path: p, req: a[0], err: a[1], avg: a[0] ? Math.round(a[2] / a[0]) : 0 })).sort((a, b) => b.req - a.req).slice(0, 10);
+    return { top, methods: st.m, ua: st.u, lhist: st.lh, edges: LAT_EDGES };
   }
 
   latency(id) {
     const l = [...this._rt(id).lat].sort((a, b) => a - b);
-    if (!l.length) return { p50: 0, p95: 0, n: 0 };
-    return { p50: l[Math.floor(l.length * 0.5)], p95: l[Math.min(l.length - 1, Math.floor(l.length * 0.95))], n: l.length };
+    if (!l.length) return { p50: 0, p95: 0, p99: 0, n: 0 };
+    const q = (p) => l[Math.min(l.length - 1, Math.floor(l.length * p))];
+    return { p50: q(0.5), p95: q(0.95), p99: q(0.99), n: l.length };
   }
 
   recent(id) { return [...this._rt(id).recent].reverse().slice(0, 40); }

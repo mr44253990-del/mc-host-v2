@@ -23,7 +23,7 @@ When you propose a script change:
 If the user only asks a question or wants debugging help, answer without a code block unless a fix needs code.`;
 
 class Ai {
-  constructor(store, runner) { this.store = store; this.runner = runner; this.pending = new Map(); }
+  constructor(store, runner) { this.store = store; this.runner = runner; this.pending = new Map(); this.pendingW = new Map(); }
 
   key() { return this.store.setting('mistralKey') || process.env.MISTRAL_API_KEY || ''; }
   model() { return this.store.setting('mistralModel') || process.env.MISTRAL_MODEL || 'mistral-small-latest'; }
@@ -153,6 +153,80 @@ class Ai {
     return this.complete(messages, { max_tokens: 700 });
   }
 }
+
+
+const SYSTEM_W = `You are "MC Host Worker Assistant", an expert in a Cloudflare-Workers-like runtime embedded in a hosting panel. Reply in the same language as the user (usually Bengali), concise and practical.
+
+Runtime facts:
+- A Worker is a project with MULTIPLE FILES in one folder. Entry file (default worker.js) exports: export default { async fetch(request, env, ctx) {...}, async scheduled(event, env, ctx) {...} }. addEventListener('fetch') and CommonJS (module.exports) also work.
+- Files can import each other with relative ESM paths including extension: import { x } from './lib/utils.js'. JSON can be read with fs. No npm install is possible; only Node built-ins and Web APIs (fetch, Request, Response, Headers, URL, crypto, TextEncoder...).
+- env contains the user's environment variables (env.KEY, also process.env.KEY and globals), env.KV (get/put/delete/list persistent store), env.ASSETS.fetch(request) serving static files from the public/, static/ or assets/ folder. A .env file in the project is also loaded.
+- The public URL is /w/<slug>/... and the path your code sees has that prefix removed.
+- Never print or invent secret values. Refer to env by name only.
+
+When you create or change files, output EACH changed or new file COMPLETELY (never partial) in this exact format, one block per file:
+\`\`\`file:path/relative/to/project.js
+<full file content>
+\`\`\`
+Explain briefly before the blocks (2-5 lines). Only include files that actually change. If the user only asks a question, answer without file blocks.`;
+
+Ai.prototype.workerContext = function (workers, w) {
+  const files = workers.listFiles(w.id);
+  const entry = workers.entryOf(w);
+  const v = workers.view(w);
+  const rt = workers._rt(w.id);
+  const err = workers.recent(w.id).filter((r) => r.status >= 500).slice(0, 5).map((r) => `${r.method} ${r.path} -> ${r.status} ${r.err || ''}`).join('\n');
+  let budget = 14000; const parts = [];
+  const order = [...files].sort((a, b) => (b.path === entry) - (a.path === entry) || a.size - b.size);
+  for (const f of order) {
+    if (budget <= 0) { parts.push(`--- ${f.path} (${f.size}B, বাদ: কনটেক্সট সীমা)`); continue; }
+    let r; try { r = workers.readFile(w.id, f.path); } catch { continue; }
+    if (!r.text) { parts.push(`--- ${f.path} (${f.size}B, বাইনারি/বড়)`); continue; }
+    const t = r.text.slice(0, Math.min(budget, 6000)); budget -= t.length;
+    parts.push(`--- ${f.path}${t.length < r.text.length ? ' (কাটা)' : ''}\n${t}`);
+  }
+  const notes = this.store.mem('w:' + w.id).notes.map((n) => '- ' + n).join('\n');
+  return [
+    `Worker: ${w.name} | slug=${w.slug} | entry=${entry} | state=${v.state} | files=${files.length} | cron=${w.cronMin || 0}m | rateLimit=${w.rateLimit || 0}/min`,
+    `ENV keys: ${(w.env || []).map((e) => e.key + (e.secret ? '(secret)' : '')).join(', ') || '(none)'}`,
+    v.error ? `Current error: ${v.error.slice(0, 500)}` : 'Current error: none',
+    `Recent 5xx:\n${err || '(none)'}`,
+    `Recent logs:\n${workers.logs(w.id).slice(-25).join('\n') || '(empty)'}`,
+    `Memory notes:\n${notes || '(none)'}`,
+    `Project files:\n${parts.join('\n')}`,
+  ].join('\n');
+};
+
+Ai.parseFiles = function (text) {
+  const out = []; const re = /```file:([^\n`]+)\n([\s\S]*?)```/g; let m;
+  while ((m = re.exec(String(text)))) out.push({ path: m[1].trim(), content: m[2].replace(/\n$/, '') });
+  return out;
+};
+
+Ai.prototype.chatWorker = async function (workers, w, text) {
+  const mem = this.store.mem('w:' + w.id);
+  const messages = [
+    { role: 'system', content: SYSTEM_W + '\n\n' + this.workerContext(workers, w) },
+    ...mem.chat.slice(-10),
+    { role: 'user', content: String(text).slice(0, 4000) },
+  ];
+  const reply = await this.complete(messages, { max_tokens: 6000 });
+  const blocks = Ai.parseFiles(reply);
+  const existing = new Set(workers.listFiles(w.id).map((f) => f.path));
+  const changes = [];
+  for (const b of blocks.slice(0, 20)) {
+    let p; try { p = workers.safeRel(b.path); } catch (e) { changes.push({ path: b.path, content: '', error: e.message, isNew: true }); continue; }
+    changes.push({ path: p, content: b.content, isNew: !existing.has(p), error: workers.syntaxCheck(p, b.content), size: Buffer.byteLength(b.content) });
+  }
+  const shown = reply.replace(/```file:([^\n`]+)\n[\s\S]*?```/g, (_, p) => `[ফাইল: ${p.trim()}]`);
+  mem.chat.push({ role: 'user', content: String(text).slice(0, 1500) }, { role: 'assistant', content: shown.slice(0, 1500) });
+  if (mem.chat.length > 30) await this._compact(mem).catch(() => {});
+  this.store.save();
+  const good = changes.filter((c) => !c.error);
+  if (good.length) this.pendingW.set(w.id, good); else this.pendingW.delete(w.id);
+  return { reply: shown, changes };
+};
+Ai.prototype.takePendingW = function (id) { const c = this.pendingW.get(id); this.pendingW.delete(id); return c || []; };
 
 module.exports = Ai;
 module.exports.FALLBACK_MODELS = FALLBACK_MODELS;

@@ -2,6 +2,7 @@
 // প্রতিটি Worker আলাদা প্রসেসে চলে (Cloudflare Workers-এর মতো fetch হ্যান্ডলার)।
 // সমর্থিত: export default { fetch, scheduled }  অথবা  addEventListener('fetch', ...)
 const fs = require('fs');
+const path = require('path');
 const { pathToFileURL } = require('url');
 const { createRequire } = require('module');
 
@@ -50,10 +51,46 @@ class KV {
 }
 const kv = new KV(cfg.kv);
 
+// ---------- .env / .dev.vars ফাইল (প্যানেলের ENV-এর চেয়ে কম অগ্রাধিকার) ----------
+const dotenv = {};
+for (const f of ['.env', '.dev.vars']) {
+  try {
+    for (const line of fs.readFileSync(path.join(cfg.dir, f), 'utf8').split('\n')) {
+      const m = line.match(/^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*?)\s*$/);
+      if (m && !line.trim().startsWith('#')) dotenv[m[1]] = m[2].replace(/^(["'])(.*)\1$/, '$2');
+    }
+  } catch { /* নেই */ }
+}
+
+// ---------- ASSETS: public/, static/, assets/ ফোল্ডার থেকে স্ট্যাটিক ফাইল ----------
+const MIME = { html: 'text/html; charset=utf-8', css: 'text/css; charset=utf-8', js: 'text/javascript; charset=utf-8', mjs: 'text/javascript; charset=utf-8', json: 'application/json; charset=utf-8', txt: 'text/plain; charset=utf-8', svg: 'image/svg+xml', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', ico: 'image/x-icon', woff2: 'font/woff2', woff: 'font/woff', xml: 'application/xml', pdf: 'application/pdf', mp3: 'audio/mpeg', mp4: 'video/mp4', wasm: 'application/wasm', map: 'application/json', md: 'text/markdown; charset=utf-8' };
+const ASSETS = {
+  async fetch(input) {
+    const req = input instanceof Request ? input : new Request(input);
+    let p;
+    try { p = decodeURIComponent(new URL(req.url).pathname); } catch { return new Response('Bad Request', { status: 400 }); }
+    if (p.endsWith('/')) p += 'index.html';
+    for (const d of ['public', 'static', 'assets']) {
+      const root = path.join(cfg.dir, d);
+      const file = path.join(root, p);
+      if (!file.startsWith(root + path.sep)) continue;
+      let target = file;
+      try {
+        if (fs.statSync(target).isDirectory()) target = path.join(target, 'index.html');
+        const body = await fs.promises.readFile(target);
+        const ext = path.extname(target).slice(1).toLowerCase();
+        return new Response(req.method === 'HEAD' ? null : body, { headers: { 'content-type': MIME[ext] || 'application/octet-stream', 'cache-control': 'public, max-age=300' } });
+      } catch { /* পরের ফোল্ডার */ }
+    }
+    return new Response('Not Found', { status: 404 });
+  },
+};
+
 // ---------- env / globals ----------
-const env = { ...(cfg.env || {}), KV: kv };
-for (const [k, v] of Object.entries(cfg.env || {})) { process.env[k] = v; globalThis[k] = v; }
-globalThis.KV = kv;
+const env = { ...dotenv, ...(cfg.env || {}), KV: kv, ASSETS };
+for (const [k, v] of Object.entries({ ...dotenv, ...(cfg.env || {}) })) { process.env[k] = v; globalThis[k] = v; }
+globalThis.KV = kv; globalThis.ASSETS = ASSETS; globalThis.env = env;
+try { process.chdir(cfg.dir); } catch { /* ignore */ }
 
 const listeners = { fetch: [], scheduled: [] };
 globalThis.addEventListener = (type, fn) => { if (listeners[type]) listeners[type].push(fn); };
@@ -62,12 +99,7 @@ let fetchFn = null, schedFn = null;
 const mkCtx = () => { const w = []; return { w, ctx: { waitUntil: (p) => { w.push(Promise.resolve(p).catch((e) => console.error('waitUntil:', e && e.message))); }, passThroughOnException() {} } }; };
 
 async function load() {
-  let mod;
-  try { mod = await import(pathToFileURL(cfg.file).href); } catch (e) {
-    if (e instanceof ReferenceError && /module|exports/.test(e.message)) { // CommonJS স্টাইল
-      const cjs = cfg.file.replace(/\.mjs$/, '.cjs'); fs.copyFileSync(cfg.file, cjs); mod = require(cjs);
-    } else throw e;
-  }
+  const mod = await import(pathToFileURL(cfg.file).href); // package.json এর "type" অনুযায়ী ESM/CommonJS দুটোই চলে
   const def = mod.default || mod;
   if (def && typeof def.fetch === 'function') fetchFn = (req, ctx) => def.fetch(req, env, ctx);
   else if (listeners.fetch.length) fetchFn = null;
@@ -88,6 +120,7 @@ async function runFetch(request, ctx) {
 
 async function onReq(m) {
   const { w, ctx } = mkCtx();
+  const c0 = process.cpuUsage();
   try {
     const init = { method: m.method, headers: m.headers };
     if (m.body && !['GET', 'HEAD'].includes(m.method)) init.body = Buffer.from(m.body, 'base64');
@@ -99,9 +132,10 @@ async function onReq(m) {
     resp.headers.forEach((v, k) => { if (k !== 'set-cookie') headers.push([k, v]); });
     const sc = typeof resp.headers.getSetCookie === 'function' ? resp.headers.getSetCookie() : [];
     for (const c of sc) headers.push(['set-cookie', c]);
-    send({ t: 'res', id: m.id, status: resp.status, headers, body: buf.toString('base64') });
+    const cu = process.cpuUsage(c0);
+    send({ t: 'res', id: m.id, status: resp.status, headers, body: buf.toString('base64'), cpu: Math.round((cu.user + cu.system) / 100) / 10 });
   } catch (e) {
-    send({ t: 'res', id: m.id, error: String((e && e.stack) || e).slice(0, 2000) });
+    send({ t: 'res', id: m.id, error: String((e && e.stack) || e).slice(0, 2000), cpu: Math.round((process.cpuUsage(c0).user) / 100) / 10 });
   }
   Promise.all(w).catch(() => {});
 }

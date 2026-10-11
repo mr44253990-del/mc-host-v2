@@ -13,6 +13,8 @@ const Tg = require('./tg');
 const { genId, parseHost, validName } = require('./util');
 const TEMPLATES = require('./templates');
 const Workers = require('./workers');
+const sys = require('./sys');
+const insights = require('./insights');
 const WK_TEMPLATES = require('./worker-templates');
 
 // Wispbyte / Pterodactyl: SERVER_PORT, Render/Heroku/Railway: PORT, নইলে 11336
@@ -53,10 +55,12 @@ const fail = (res, error, code = 400) => res.status(code).json({ ok: false, erro
   const setCookie = (req, res, token) => res.setHeader('Set-Cookie', `mch=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${7 * 86400}${req.secure ? '; Secure' : ''}`);
   const LIMIT = 10, LOCK_MS = 5 * 60000;
   const tries = new Map();
+  const audit = (req, type, detail = '') => { const a = (store.data.audit ||= []); a.push({ t: Date.now(), ip: req.ip || '', type, detail: String(detail).slice(0, 160) }); if (a.length > 200) a.splice(0, a.length - 200); store.save(); };
 
   const runner = new Runner(store);
   const ai = new Ai(store, runner);
-  const tg = new Tg(store, runner, ai, { maxBots: MAX_MC, defaultScript: DEFAULT_SCRIPT });
+  const workers = new Workers(store, { max: MAX_WK });
+  const tg = new Tg(store, runner, ai, { maxBots: MAX_MC, defaultScript: DEFAULT_SCRIPT, workers, sys, insights, getPwMode: () => pwMode() });
   runner.on('event', (ev) => {
     tg.notifyEvent(ev);
     const url = store.setting('webhookUrl');
@@ -67,7 +71,15 @@ const fail = (res, error, code = 400) => res.status(code).json({ ok: false, erro
     fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content: body, text: body }), signal: AbortSignal.timeout(8000) }).catch(() => {});
   });
 
-  const workers = new Workers(store, { max: MAX_WK });
+  workers.on('event', (ev) => {
+    tg.notifyWorker(ev);
+    const url = store.setting('webhookUrl');
+    if (!url) return;
+    const txt = ({ down: 'বন্ধ/ত্রুটিতে', up: 'আবার চালু', errorrate: 'ত্রুটির হার বেশি' })[ev.type];
+    if (!txt) return;
+    const body = `MC Host Worker: ${ev.worker.name} ${txt}${ev.reason ? ' (' + String(ev.reason).slice(0, 120) + ')' : ''}`;
+    fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content: body, text: body }), signal: AbortSignal.timeout(8000) }).catch(() => {});
+  });
 
   const app = express();
   app.disable('x-powered-by');
@@ -78,7 +90,8 @@ const fail = (res, error, code = 400) => res.status(code).json({ ok: false, erro
   app.all('/w/:slug', rawBody, wkServe);
   app.all('/w/:slug/*', rawBody, wkServe);
 
-  app.use(express.json({ limit: '1mb' }));
+  const jsonParser = express.json({ limit: '1mb' });
+  app.use((req, res, next) => (req.path === '/api/restore' ? next() : jsonParser(req, res, next)));
   app.get('/healthz', (req, res) => res.type('text').send('ok'));
 
   // ---------- auth ----------
@@ -94,19 +107,23 @@ const fail = (res, error, code = 400) => res.status(code).json({ ok: false, erro
     const real = Buffer.from(password);
     const good = given.length === real.length && crypto.timingSafeEqual(given, real);
     if (!good) {
-      t.n++;
+      t.n++; audit(req, 'login-fail', 'ভুল পাসওয়ার্ড');
       if (t.n >= LIMIT) { t.until = Date.now() + LOCK_MS; t.n = 0; }
       tries.set(ip, t);
       return fail(res, `পাসওয়ার্ড ভুল (আর ${Math.max(0, LIMIT - t.n)}বার চেষ্টা করা যাবে)`, 401);
     }
-    tries.delete(ip);
+    tries.delete(ip); audit(req, 'login', 'সফল লগইন');
     const token = mkCookie();
     setCookie(req, res, token);
     ok(res, { token });
   });
   app.post('/api/logout', (req, res) => { res.setHeader('Set-Cookie', 'mch=; Max-Age=0; Path=/'); ok(res); });
   app.get('/api/me', (req, res) => res.json({ ok: validCookie(cookieOf(req)) }));
-  app.use('/api', (req, res, next) => (validCookie(cookieOf(req)) ? next() : fail(res, 'লগইন করুন', 401)));
+  app.use('/api', (req, res, next) => {
+    if (!validCookie(cookieOf(req))) return fail(res, 'লগইন করুন', 401);
+    if (req.method !== 'GET' && !/^\/(ai\/chat|bots\/[^/]+\/ai|workers\/[^/]+\/(ai|test))/.test(req.path)) audit(req, 'api', req.method + ' ' + req.path);
+    next();
+  });
 
   // ---------- state ----------
   const botView = (b) => ({ id: b.id, username: b.username, host: b.host, port: b.port, version: b.version || '', notify: b.notify !== false, autoRestartHours: b.autoRestartHours || 0, joinCmds: b.joinCmds || [], rules: b.rules || [], periodic: b.periodic || [], desired: !!b.desired, createdAt: b.createdAt, snap: runner.snapshot(b.id) });
@@ -123,6 +140,7 @@ const fail = (res, error, code = 400) => res.status(code).json({ ok: false, erro
       workers: { count: workers.all().length, running: workers.all().filter((w) => workers.view(w).state === 'running').length },
       host: { port: PORT, mode: store.mode, node: process.version, uptime: Date.now() - started, rss: Math.round(process.memoryUsage().rss / 1048576), cpus: os.cpus().length, limits: { mc: MAX_MC, tg: MAX_TG }, platform: process.env.RENDER ? 'Render' : process.env.SERVER_PORT ? 'Wispbyte / Pterodactyl' : 'Generic' },
       history: store.data.history.slice(-90),
+      settings: { tzOffset: store.setting('tzOffset', null), digestHour: store.setting('digestHour', -1), muteUntil: store.setting('muteUntil', 0), notifyBots: store.setting('notifyBots', true), notifyWorkers: store.setting('notifyWorkers', true) },
     });
   });
 
@@ -235,13 +253,11 @@ const fail = (res, error, code = 400) => res.status(code).json({ ok: false, erro
     for (const b of store.data.bots) scripts[b.id] = store.readScript(b.id);
     const data = JSON.parse(JSON.stringify(store.data));
     delete data.settings.autoPassword; delete data.settings.customPassword; delete data.settings.customPasswordEnv; delete data.history;
-    const wk = {};
-    for (const w of workers.all()) wk[w.id] = workers.readCode(w.id);
     res.setHeader('Content-Disposition', 'attachment; filename="mc-host-backup.json"');
-    res.json({ v: 3, ts: Date.now(), data, scripts, workers: wk });
+    res.json({ v: 4, ts: Date.now(), data, scripts, workerFiles: workers.exportAll() });
   });
-  app.post('/api/restore', async (req, res) => {
-    const { data, scripts, workers: wkCodes } = req.body || {};
+  app.post('/api/restore', express.json({ limit: '40mb' }), async (req, res) => {
+    const { data, scripts, workerFiles, workers: legacy } = req.body || {};
     if (!data || !Array.isArray(data.bots) || !Array.isArray(data.tgBots)) return fail(res, 'ব্যাকআপ ফাইল সঠিক নয়');
     for (const [id, code] of Object.entries(scripts || {})) { try { new vm.Script(String(code)); } catch { return fail(res, 'ব্যাকআপের একটি স্ক্রিপ্টে ত্রুটি আছে'); } }
     await runner.stopAll({ keepDesired: true });
@@ -252,11 +268,9 @@ const fail = (res, error, code = 400) => res.status(code).json({ ok: false, erro
     for (const b of store.data.bots) store.writeScript(b.id, String((scripts || {})[b.id] || DEFAULT_SCRIPT));
     if (Array.isArray(data.workers)) {
       for (const w of workers.all().slice()) await workers.remove(w.id);
-      for (const w of data.workers.slice(0, MAX_WK)) {
-        const code = String((wkCodes || {})[w.id] || '');
-        if (!code) continue;
-        try { const c = workers.create({ name: w.name, slug: w.slug, code, env: w.env, cronMin: w.cronMin }); workers.get(c.id).enabled = !!w.enabled; } catch { /* skip */ }
-      }
+      store.data.workers = data.workers.slice(0, MAX_WK).map((w) => ({ ...w, enabled: !!w.enabled }));
+      workers.importAll(workerFiles || legacy || {});
+      workers._migrate();
       workers.autostart();
     }
     store.save();
@@ -304,6 +318,12 @@ const fail = (res, error, code = 400) => res.status(code).json({ ok: false, erro
     if (typeof mistralKey === 'string' && mistralKey.trim()) store.setSetting('mistralKey', mistralKey.trim());
     if (mistralKey === '') store.setSetting('mistralKey', '');
     if (typeof mistralModel === 'string' && mistralModel.trim()) store.setSetting('mistralModel', mistralModel.trim());
+    const b = req.body || {};
+    if (b.tzOffset !== undefined && Number.isFinite(Number(b.tzOffset))) store.setSetting('tzOffset', Math.max(-840, Math.min(840, Number(b.tzOffset))));
+    if (b.digestHour !== undefined) store.setSetting('digestHour', Math.max(-1, Math.min(23, Number(b.digestHour) || 0)));
+    if (b.muteUntil !== undefined) store.setSetting('muteUntil', Number(b.muteUntil) || 0);
+    if (typeof b.notifyBots === 'boolean') store.setSetting('notifyBots', b.notifyBots);
+    if (typeof b.notifyWorkers === 'boolean') store.setSetting('notifyWorkers', b.notifyWorkers);
     ok(res);
   });
 
@@ -315,36 +335,85 @@ const fail = (res, error, code = 400) => res.status(code).json({ ok: false, erro
   });
   app.delete('/api/tg/:id', async (req, res) => { await tg.remove(req.params.id); ok(res); });
 
+  // ---------- Insights / System / Audit ----------
+  app.get('/api/insights', (req, res) => {
+    const tz = Number(req.query.tz) || 0;
+    ok(res, { items: insights.build({ store, runner, workers, sys: sys.info(store, runner, workers), tzMin: tz, extra: { renderLocal: !!process.env.RENDER && store.mode === 'local', autoPassword: pwMode() === 'auto', noAi: !ai.ready(), noTg: store.data.tgBots.length === 0 } }) });
+  });
+  app.get('/api/system', (req, res) => ok(res, { sys: sys.info(store, runner, workers) }));
+  app.get('/api/audit', (req, res) => ok(res, { items: [...(store.data.audit || [])].reverse().slice(0, 100) }));
+
   // ---------- Workers ----------
   const guard = (fn) => async (req, res) => { try { await fn(req, res); } catch (e) { fail(res, e.message || 'ত্রুটি'); } };
   const withWk = (fn) => guard(async (req, res) => { const w = workers.get(req.params.id); if (!w) return fail(res, 'Worker পাওয়া যায়নি', 404); return fn(w, req, res); });
   const tzOf = (req) => Number(req.query.tz) || 0;
   const wkFull = (w, tz) => ({ ...workers.view(w), agg: workers.agg([w.id], tz) });
+  const blob = express.raw({ type: () => true, limit: '30mb' });
+  const MIME = { html: 'text/html', css: 'text/css', js: 'text/javascript', json: 'application/json', svg: 'image/svg+xml', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', txt: 'text/plain', md: 'text/plain' };
 
   app.get('/api/worker-templates', (req, res) => ok(res, { templates: WK_TEMPLATES }));
   app.get('/api/workers', (req, res) => {
     const tz = tzOf(req);
-    ok(res, { workers: workers.all().map((w) => wkFull(w, tz)), agg: workers.agg(workers.all().map((w) => w.id), tz), max: MAX_WK });
+    ok(res, { workers: workers.all().map((w) => wkFull(w, tz)), agg: workers.agg(workers.all().map((w) => w.id), tz), max: MAX_WK, origin: workers.origin });
   });
   app.post('/api/workers', guard(async (req, res) => {
     const b = req.body || {};
-    const code = String(b.code || '');
-    if (code.length > 900000) return fail(res, 'worker.js অনেক বড় (সর্বোচ্চ ~৯০০KB)');
-    const w = workers.create({ name: b.name, slug: b.slug, code, env: b.env, cronMin: b.cronMin });
+    const w = workers.create({ name: b.name, slug: b.slug, code: b.code, files: b.files, env: b.env, cronMin: b.cronMin, entry: b.entry });
     const deploy = await workers.deploy(w.id);
     ok(res, { id: w.id, slug: w.slug, deploy });
   }));
-  app.get('/api/workers/:id/stats', withWk((w, req, res) => ok(res, { agg: workers.agg([w.id], tzOf(req)), lat: workers.latency(w.id), recent: workers.recent(w.id), w: workers.view(w) })));
+  app.post('/api/workers/:id/clone', withWk(async (w, req, res) => { const c = workers.clone(w.id, (req.body || {}).name); ok(res, { id: c.id }); }));
+  app.get('/api/workers/:id/stats', withWk((w, req, res) => ok(res, { agg: workers.agg([w.id], tzOf(req)), lat: workers.latency(w.id), recent: workers.recent(w.id), extra: workers.extra(w.id), w: workers.view(w) })));
   app.get('/api/workers/:id/logs', withWk((w, req, res) => ok(res, { logs: workers.logs(w.id), w: workers.view(w) })));
-  app.get('/api/workers/:id/code', withWk((w, req, res) => ok(res, { code: workers.readCode(w.id), hasPrev: workers.hasPrev(w.id) })));
-  app.put('/api/workers/:id/code', withWk(async (w, req, res) => {
+
+  // ফাইল ম্যানেজার
+  app.get('/api/workers/:id/files', withWk((w, req, res) => ok(res, { files: workers.listFiles(w.id), entry: workers.entryOf(w), w: workers.view(w) })));
+  app.get('/api/workers/:id/file', withWk((w, req, res) => ok(res, workers.readFile(w.id, String(req.query.path || '')))));
+  app.get('/api/workers/:id/raw', withWk((w, req, res) => {
+    const f = workers.absOf(w.id, String(req.query.path || ''));
+    const ext = f.split('.').pop().toLowerCase();
+    res.setHeader('Content-Type', MIME[ext] || 'application/octet-stream');
+    if (req.query.download) res.setHeader('Content-Disposition', `attachment; filename="${path.basename(f)}"`);
+    res.end(fs.readFileSync(f));
+  }));
+  app.put('/api/workers/:id/file', withWk((w, req, res) => {
+    const p = workers.safeRel((req.body || {}).path);
+    const content = String((req.body || {}).content ?? '');
+    workers.writeFile(w.id, p, content);
+    ok(res, { path: p, syntax: workers.syntaxCheck(p, content) });
+  }));
+  app.put('/api/workers/:id/blob', blob, withWk((w, req, res) => {
+    if (!Buffer.isBuffer(req.body)) return fail(res, 'ফাইল ডাটা পাওয়া যায়নি');
+    const p = workers.safeRel(req.query.path);
+    workers.writeFile(w.id, p, req.body);
+    ok(res, { path: p, size: req.body.length });
+  }));
+  app.delete('/api/workers/:id/file', withWk((w, req, res) => { workers.deleteFile(w.id, String(req.query.path || '')); ok(res); }));
+  app.post('/api/workers/:id/move', withWk((w, req, res) => { workers.moveFile(w.id, (req.body || {}).from, (req.body || {}).to); ok(res); }));
+  app.post('/api/workers/:id/import-zip', blob, withWk((w, req, res) => {
+    if (!Buffer.isBuffer(req.body) || !req.body.length) return fail(res, 'ZIP ফাইল পাওয়া যায়নি');
+    ok(res, workers.importZip(w.id, req.body, { replace: req.query.replace === '1' }));
+  }));
+  app.get('/api/workers/:id/export', withWk((w, req, res) => {
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', `attachment; filename="${w.slug}.zip"`);
+    res.end(workers.exportZip(w.id));
+  }));
+
+  // ডিপ্লয় ও ভার্সন
+  app.post('/api/workers/:id/deploy', withWk(async (w, req, res) => { const r = await workers.deploy(w.id); r.ok ? ok(res) : res.status(422).json({ ok: false, error: r.error, rolledBack: !!r.rolledBack }); }));
+  app.put('/api/workers/:id/code', withWk(async (w, req, res) => { // পুরনো এন্ডপয়েন্ট: এন্ট্রি ফাইল লিখে ডিপ্লয়
     const code = String((req.body || {}).code || '');
     if (!code.trim()) return fail(res, 'worker.js ফাঁকা');
-    if (code.length > 900000) return fail(res, 'worker.js অনেক বড়');
-    const r = await workers.deploy(w.id, code);
+    workers.writeFile(w.id, workers.entryOf(w) || 'worker.js', code);
+    const r = await workers.deploy(w.id);
     r.ok ? ok(res) : res.status(422).json({ ok: false, error: r.error, rolledBack: !!r.rolledBack });
   }));
-  app.post('/api/workers/:id/rollback', withWk(async (w, req, res) => { const r = await workers.rollback(w.id); r.ok ? ok(res) : fail(res, r.error); }));
+  app.get('/api/workers/:id/versions', withWk((w, req, res) => ok(res, { versions: workers.versions(w.id) })));
+  app.post('/api/workers/:id/restore', withWk(async (w, req, res) => { const r = await workers.restore(w.id, String((req.body || {}).name || '')); r.ok ? ok(res) : res.status(422).json({ ok: false, error: r.error }); }));
+  app.post('/api/workers/:id/snapshot', withWk((w, req, res) => { workers.snapshot(w.id, 'manual'); ok(res); }));
+
+  // ENV
   app.get('/api/workers/:id/env', withWk((w, req, res) => ok(res, { env: (w.env || []).map((e) => ({ key: e.key, secret: !!e.secret, value: e.secret ? '' : e.value, has: e.value !== '' })) })));
   app.put('/api/workers/:id/env', withWk(async (w, req, res) => {
     w.env = workers.cleanEnv((req.body || {}).env, w.env);
@@ -357,13 +426,35 @@ const fail = (res, error, code = 400) => res.status(code).json({ ok: false, erro
   app.post('/api/workers/:id/restart', withWk(async (w, req, res) => { const r = await workers.start(w.id); r.ok ? ok(res) : fail(res, r.error); }));
   app.post('/api/workers/:id/stop', withWk(async (w, req, res) => { await workers.stop(w.id); ok(res); }));
   app.delete('/api/workers/:id', withWk(async (w, req, res) => { await workers.remove(w.id); ok(res); }));
+  app.post('/api/workers/:id/test', withWk(async (w, req, res) => {
+    const b = req.body || {};
+    const o = await workers.invoke(w.id, { method: String(b.method || 'GET').toUpperCase(), path: String(b.path || '/'), headers: b.headers || {}, body: b.body || null });
+    ok(res, { status: o.status, ms: o.ms, headers: o.headers, body: o.body.subarray(0, 20000).toString('utf8') });
+  }));
+
+  // Worker AI
+  app.post('/api/workers/:id/ai', withWk(async (w, req, res) => {
+    const text = String((req.body || {}).text || '').trim();
+    if (!text) return fail(res, 'মেসেজ ফাঁকা');
+    try { ok(res, await ai.chatWorker(workers, w, text)); } catch (e) { fail(res, e.message, 502); }
+  }));
+  app.post('/api/workers/:id/ai/apply', withWk(async (w, req, res) => {
+    let changes = ai.takePendingW(w.id);
+    const only = Array.isArray((req.body || {}).paths) ? new Set(req.body.paths) : null;
+    if (only) changes = changes.filter((c) => only.has(c.path));
+    if (!changes.length) return fail(res, 'প্রয়োগ করার মতো পরিবর্তন নেই (মেয়াদ শেষ?)');
+    workers.applyChanges(w.id, changes);
+    ai.addNote('w:' + w.id, `AI পরিবর্তন প্রয়োগ: ${changes.map((c) => c.path).join(', ')}`.slice(0, 280));
+    const r = (req.body || {}).deploy === false ? { ok: true } : await workers.deploy(w.id);
+    r.ok ? ok(res, { applied: changes.length }) : res.status(422).json({ ok: false, error: r.error, rolledBack: !!r.rolledBack });
+  }));
 
   // ---------- static ----------
   app.use(express.static(path.join(__dirname, '..', 'public'), { maxAge: 0 }));
   app.use((err, req, res, next) => { console.error('[http]', err.message); if (!res.headersSent) fail(res, 'সার্ভার ত্রুটি', 500); });
 
   // ফ্লিট হিস্ট্রি স্যাম্পলার (গ্রাফের জন্য)
-  const sample = () => { const f = runner.fleet(); store.pushHistory({ t: Date.now(), online: f.online, total: f.total, mem: f.mem }); };
+  const sample = () => { const f = runner.fleet(); store.pushHistory({ t: Date.now(), online: f.online, total: f.total, mem: f.mem, rss: Math.round(process.memoryUsage().rss / 1048576), lag: sys.lag(), wreq: workers.totalRequests() }); };
   setInterval(sample, 30000).unref();
   sample();
 

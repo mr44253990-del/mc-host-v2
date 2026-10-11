@@ -198,11 +198,47 @@ a.btn{text-decoration:none;color:inherit}
 .st2{color:var(--ok)}.st3{color:var(--a2)}.st4{color:var(--warn)}.st5{color:var(--bad)}
 .urlchip{display:inline-flex;align-items:center;gap:8px;padding:6px 8px 6px 12px;border-radius:14px;background:rgba(0,0,0,.22);border:1px solid var(--line);font-family:var(--mono);font-size:12.5px;max-width:100%}
 .urlchip span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* ===== v2.3: নতুন ব্যাকগ্রাউন্ড, অ্যাকসেন্ট, ফাইল ম্যানেজার ===== */
+html[data-accent="sunset"]{--a1:#ff7a45;--a2:#ff3d81;--a3:#ffc94a}
+html[data-accent="ocean"]{--a1:#2b8cff;--a2:#14e1d0;--a3:#6a5cff}
+html[data-accent="emerald"]{--a1:#10d98c;--a2:#36e2ff;--a3:#b6ff5c}
+html[data-accent="rose"]{--a1:#ff5c8a;--a2:#b45cff;--a3:#5cc8ff}
+html[data-accent="mono"]{--a1:#9aa4c7;--a2:#e3e7fb;--a3:#6b7399}
+#fx{position:fixed;inset:0;z-index:0;pointer-events:none}
+body::before{content:"";position:fixed;inset:0;z-index:0;pointer-events:none;background:radial-gradient(900px 520px at 12% -8%,color-mix(in srgb,var(--a1) 30%,transparent),transparent 70%),radial-gradient(800px 520px at 100% 8%,color-mix(in srgb,var(--a2) 22%,transparent),transparent 70%),radial-gradient(1000px 600px at 50% 125%,color-mix(in srgb,var(--a3) 22%,transparent),transparent 70%)}
+.tile::before,.bc::before{content:"";position:absolute;inset:0;border-radius:inherit;padding:1px;pointer-events:none;opacity:0;transition:opacity .4s;background:conic-gradient(from var(--ang,0deg),transparent 0 62%,var(--a2) 82%,var(--a1) 94%,transparent);-webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask:linear-gradient(#000 0 0) content-box exclude,linear-gradient(#000 0 0);mask-composite:exclude;animation:ang 5s linear infinite}
+.tile:hover::before,.bc:hover::before{opacity:1}
+@property --ang{syntax:'<angle>';initial-value:0deg;inherits:false}
+@keyframes ang{to{--ang:360deg}}
+.fm{display:grid;grid-template-columns:310px 1fr;gap:16px;align-items:start}
+.fm-list{max-height:430px;overflow:auto}
+.fm-code{min-height:440px!important;white-space:pre;tab-size:2}
+.fr{display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:10px;cursor:pointer;font-size:13px;position:relative}
+.fr:hover{background:var(--glass2)}.fr.on{background:linear-gradient(135deg,rgba(124,92,255,.28),rgba(39,211,255,.14))}
+.fr small{margin-left:auto;color:var(--t3);font-size:11px;white-space:nowrap}
+.fr .fn{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.fr .fa{display:none;gap:2px}.fr:hover .fa{display:flex}.fr:hover small{display:none}
+.fr .fa b{padding:3px;border-radius:7px;display:grid;place-items:center}.fr .fa b:hover{background:rgba(255,255,255,.14)}
+.chev{display:inline-block;width:10px;transition:transform .2s;color:var(--t3)}.chev.o{transform:rotate(90deg)}
+.alert{padding:12px;border-radius:14px;border:1px solid var(--line)}.alert.ok{background:rgba(53,230,160,.12);border-color:rgba(53,230,160,.4)}.alert.bad{background:rgba(255,90,115,.12);border-color:rgba(255,90,115,.4)}
+.chg{padding:10px;border-radius:14px;background:rgba(0,0,0,.2);border:1px solid var(--line)}
+.chg pre{background:#05060e;color:#b9c2ff;padding:10px;border-radius:10px;overflow:auto;max-height:240px;margin:8px 0 0;font-size:12px}
+.heat{display:grid;grid-template-columns:34px repeat(24,1fr);gap:3px;align-items:center}
+.heat i{aspect-ratio:1;border-radius:4px;display:block}.heat .hl{font-size:10px;color:var(--t3)}
+.heat-x{display:flex;justify-content:space-between;padding:4px 0 0 37px;font-size:10px;color:var(--t3)}
+.ins{display:flex;gap:12px;align-items:center;padding:10px 12px;border-radius:14px;background:rgba(0,0,0,.18);border:1px solid var(--line);position:relative;overflow:hidden}
+.ins>i{width:4px;align-self:stretch;border-radius:4px;background:var(--c);box-shadow:0 0 12px var(--c)}
+.gauge{display:flex;flex-direction:column;align-items:center;gap:6px}
+.swatch{display:flex;flex-direction:column;align-items:center;gap:6px;background:none;border:0;cursor:pointer;color:var(--t2);font-size:12px}
+.swatch i{width:46px;height:46px;border-radius:16px;background:linear-gradient(135deg,var(--s1),var(--s2));border:2px solid transparent;box-shadow:0 8px 22px -8px var(--s1);transition:.25s}
+.swatch:hover i{transform:translateY(-3px) rotate(-4deg)}.swatch.on i{border-color:#fff;transform:scale(1.08)}
+.spark{height:auto!important;max-height:130px}
+@media(max-width:980px){.fm{grid-template-columns:1fr}.fm-list{max-height:260px}}
 </style>
 </head>
 <body>
 <svg width="0" height="0" style="position:absolute"><defs><filter id="goo"><feGaussianBlur in="SourceGraphic" stdDeviation="22" result="b"/><feColorMatrix in="b" mode="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 20 -8"/></filter></defs></svg>
-<div id="bg"><i></i><i></i><i></i></div><div id="grain"></div>
+<canvas id="fx"></canvas><div id="grain"></div>
 <div id="toasts"></div>
 
 <div id="login" class="hide">
@@ -249,6 +285,9 @@ a.btn{text-decoration:none;color:inherit}
 'use strict';
 /* ---------- icons (all drawn in code) ---------- */
 const P = {
+  file:'<path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8z"/><path d="M14 3v5h5"/>',
+  folder:'<path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>',
+  star:'<path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z"/>',
   cloud:'<path d="M17.5 19H7a4 4 0 01-.7-7.94 5.5 5.5 0 0110.7-1.3A4.6 4.6 0 0117.5 19z"/>',
   upload:'<path d="M12 16V4M7 9l5-5 5 5M5 20h14"/>',
   globe:'<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3.2 3 14.8 0 18M12 3c-3 3.2-3 14.8 0 18"/>',
@@ -336,9 +375,9 @@ function buildNav() {
   $('#out').innerHTML = ic('out') + '<span>লগআউট</span>';
   document.querySelectorAll('[data-p]').forEach((b) => (b.onclick = () => go(b.dataset.p)));
 }
-function go(p, botId) { page = p; if (p === 'workers') { W.id = null; W.stat = null; } if (botId) { sel = botId; tab = 'overview'; } if (p === 'bots' && !botId) sel = null; buildNav(); render(true); }
+function go(p, botId) { page = p; if (p === 'workers') { W.id = botId || null; W.tab = 'overview'; W.stat = null; } if (botId) { sel = botId; tab = 'overview'; } if (p === 'bots' && !botId) sel = null; buildNav(); render(true); }
 function showLogin() { $('#app').classList.add('hide'); $('#login').classList.remove('hide'); try { localStorage.removeItem('mch-token'); } catch { /* ignore */ } if (window.loginInfo) loginInfo(); setTimeout(() => $('#pw').focus(), 50); }
-async function refresh() { const j = await api('/state'); if (!j.ok) return; if (S && S.feed) j.feed = S.feed; S = j; if (page === 'dash') { const f = await api('/feed'); if (f.ok) S.feed = f.feed; } if (!$('#app').classList.contains('hide')) { header(); render(false); } }
+async function refresh() { const j = await api('/state'); if (!j.ok) return; if (S && S.feed) j.feed = S.feed; S = j; if (page === 'dash') { const f = await api('/feed'); if (f.ok) S.feed = f.feed; if (Date.now() - (window._insT || 0) > 15000) { window._insT = Date.now(); const [i, sy] = await Promise.all([api('/insights?tz=' + tzo()), api('/system')]); if (i.ok) INS = i.items; if (sy.ok) SYS = sy.sys; } } if (!$('#app').classList.contains('hide')) { header(); render(false); } }
 setInterval(() => { const c = $('#clk'); if (c) c.textContent = new Date().toLocaleTimeString('bn-BD'); }, 1000);
 function header() {
   $('#title').textContent = TITLES[page] + (page === 'bots' && sel ? '' : '');
@@ -386,6 +425,7 @@ function vDash() {
     ${tile('বটের RAM', `${f.mem}<span style="font-size:16px;opacity:.6"> MB</span>`, `হোস্ট ${S.host.rss} MB`, 'ram', 'var(--a2)')}
     ${tile('ক্র্যাশ / রিকানেক্ট', crashes, `হোস্ট আপটাইম ${fmt(S.host.uptime)}`, 'bolt', 'var(--a3)')}
   </div>
+  ${dashSmart()}
   <div class="grid g3" style="margin-top:16px">
     <div class="g p"><div class="h3">বটের অবস্থা</div>${donut(cnt, bots.length)}</div>
     <div class="g p"><div class="h3">রিসোর্স ও সীমা</div><div class="col" style="gap:14px">
@@ -494,7 +534,7 @@ function vTg() {
 
 function vSet() {
   const a = S.ai, h = S.host;
-  return `<div class="grid g2">
+  return `${themeStudio()}<div class="grid g2" style="margin-top:16px">
   <div class="g p"><div class="h3">Mistral AI</div><div class="col">
     <div><label>API key ${a.keyMask ? `<span class="pill" style="margin-left:6px">${esc(a.keyMask)}${a.fromEnv ? ' (env)' : ''}</span>` : ''}</label><input class="in" id="k" type="password" placeholder="${a.ready ? 'নতুন key দিলে বদলাবে' : 'Mistral API key'}" autocomplete="off"></div>
     <div><label>মডেল</label><div class="row"><select class="in" id="m"><option>${esc(a.model)}</option></select><button class="btn sm" id="mload">${ic('redo')}লোড</button></div></div>
@@ -508,7 +548,8 @@ function vSet() {
   <div class="g p"><div class="h3">পাসওয়ার্ড বদলান</div><div class="col"><input class="in" id="pw0" type="password" placeholder="বর্তমান পাসওয়ার্ড" autocomplete="current-password"><input class="in" id="pw1" type="password" placeholder="নতুন পাসওয়ার্ড (কমপক্ষে ৬)" autocomplete="new-password"><button class="btn pri" id="pws" style="align-self:flex-start">${ic('key')}বদলান</button></div></div>
   <div class="g p"><div class="h3">ব্যাকআপ</div><div class="row wrap"><a class="btn" href="/api/backup" download>${ic('down')}ব্যাকআপ নামান</a><button class="btn" id="rst">${ic('up')}রিস্টোর</button><input type="file" id="rstf" accept="application/json" class="hide"></div><div class="dim" style="margin-top:10px">বট, স্ক্রিপ্ট, AI মেমরি ও সেটিংস থাকে। রিস্টোরের পর বটগুলো বন্ধ অবস্থায় আসে।</div></div>
   </div>
-`;
+  <div class="grid g2" style="margin-top:16px"><div class="g p"><div class="h3">টাইমজোন (রিপোর্ট ও "আজ" গণনার জন্য)</div><div class="row wrap"><span class="pill">${S.settings && S.settings.tzOffset != null ? 'UTC' + (S.settings.tzOffset >= 0 ? '+' : '') + (S.settings.tzOffset / 60) : 'সেট নেই'}</span><button class="btn sm" id="tz-sync">${ic('clock')}ব্রাউজারের সাথে মেলান</button></div><div class="dim" style="margin-top:8px">টেলিগ্রামের দৈনিক রিপোর্ট ও বিশ্লেষণ এই টাইমজোন ব্যবহার করে।</div></div>
+  <div class="g p"><div class="h3">অডিট লগ (সাম্প্রতিক কার্যক্রম)</div><div id="audit" class="scr" style="max-height:260px;overflow:auto">লোড হচ্ছে...</div></div></div>`;
 }
 
 /* ---------- event binding ---------- */
@@ -540,6 +581,7 @@ function bind() {
       $('#c-d').onclick = () => confirmBox('বট ও তার স্ক্রিপ্ট মুছে যাবে। নিশ্চিত?', async () => { await act(`/bots/${b.id}`, 'DELETE'); sel = null; render(true); });
     }
   }
+  v.querySelectorAll('[data-ins]').forEach((b) => (b.onclick = () => { const [pg, id] = b.dataset.ins.split('|'); go(pg, id || undefined); }));
   if (page === 'workers') wkInit();
   if (page === 'ai') bindAi();
   if (page === 'tg') {
@@ -581,6 +623,8 @@ function bindAi() {
 }
 
 function bindSet() {
+  bindTheme(); loadAudit();
+  const tzb = $('#tz-sync'); if (tzb) tzb.onclick = async () => { await api('/settings', 'PUT', { tzOffset: -new Date().getTimezoneOffset() }); toast('টাইমজোন সেট হয়েছে', 'ok'); await refresh(); render(true); };
   const load = async () => { const r = await api('/ai/models'); if (!r.ok) return toast(r.error, 'bad'); $('#m').innerHTML = r.models.map((m) => `<option ${m === r.current ? 'selected' : ''}>${esc(m)}</option>`).join(''); toast(r.models.length + 'টি মডেল পাওয়া গেছে', 'ok'); };
   $('#mload').onclick = load;
   $('#ks').onclick = async () => { const body = { mistralModel: $('#m').value }; if ($('#k').value.trim()) body.mistralKey = $('#k').value.trim(); await act('/settings', 'PUT', body, 'AI সেটিংস সেভ হয়েছে'); if (body.mistralKey) { render(true); load(); } };
@@ -662,7 +706,7 @@ function wkShell() {
     root.innerHTML = `<div class="row wrap" style="margin-bottom:16px"><div class="mut" style="flex:1">${W.list.length}/${W.max} Worker &nbsp;·&nbsp; পাবলিক URL: <span class="mono">/w/নাম</span></div><button class="btn pri" id="wk-new">${ic('plus')}নতুন Worker</button></div><div id="wk-body"></div>`;
     $('#wk-new').onclick = wkNew; wkPaint(); return;
   }
-  const tabs = [['overview', 'সারসংক্ষেপ'], ['code', 'কোড'], ['settings', 'ENV ও সেটিংস'], ['logs', 'লগ'], ['test', 'টেস্ট']];
+  const tabs = [['overview', 'সারসংক্ষেপ'], ['files', 'ফাইল'], ['settings', 'ENV ও সেটিংস'], ['versions', 'ভার্সন'], ['ai', 'AI'], ['logs', 'লগ'], ['test', 'টেস্ট']];
   root.innerHTML = `<div class="row wrap" style="margin-bottom:12px"><button class="btn sm" id="wk-back">${ic('undo')}সব Worker</button><b style="font-size:20px">${esc(w.name)}</b><span id="wk-pill">${wkPill(w)}</span><div class="sp"></div><button class="btn sm" id="wk-rs">${ic('redo')}রিস্টার্ট</button><button class="btn sm ${w.enabled ? 'bad' : 'ok'}" id="wk-tg">${w.enabled ? ic('stop') + 'বন্ধ' : ic('play') + 'চালু'}</button></div>
   <div style="margin-bottom:14px"><div class="urlchip">${ic('globe')}<span>${esc(wkUrl(w))}</span><button class="btn sm" id="wk-copy" aria-label="কপি">${ic('copy')}</button><a class="btn sm" href="${esc(wkUrl(w))}" target="_blank" rel="noopener" aria-label="খুলুন">${ic('ext')}</a></div></div>
   <div class="tabs">${tabs.map(([k, t]) => `<button class="tab ${W.tab === k ? 'on' : ''}" data-wt="${k}">${t}</button>`).join('')}</div><div id="wk-body"></div>`;
@@ -681,7 +725,7 @@ function wkPaint() {
   if (W.tab === 'overview') { el.dataset.tab = 'overview'; el.innerHTML = wkOverview(w); return; }
   if (el.dataset.tab === W.tab) return;
   el.dataset.tab = W.tab;
-  ({ code: wkCodeTab, settings: wkSettingsTab, logs: wkLogsTab, test: wkTestTab })[W.tab](w, el);
+  ({ files: wkFilesTab, settings: wkSettingsTab, versions: wkVersTab, ai: wkAiTab, logs: wkLogsTab, test: wkTestTab })[W.tab](w, el);
 }
 
 function wkCharts(a) { return `<div class="grid g2" style="margin-top:16px"><div class="g p"><div class="h3">রিকোয়েস্ট: গত ২৪ ঘণ্টা</div>${bars(hoursItems(a), '#7c5cff')}</div><div class="g p"><div class="h3">রিকোয়েস্ট: গত ১৪ দিন</div>${bars(daysItems(a), '#27d3ff')}</div></div>`; }
@@ -707,62 +751,265 @@ function wkBindList() {
   el.querySelectorAll('[data-wkact]').forEach((b) => (b.onclick = async (e) => { e.stopPropagation(); const r = await api(`/workers/${b.dataset.id}/${b.dataset.wkact}`, 'POST'); r.ok ? toast('সম্পন্ন', 'ok') : toast(r.error, 'bad'); wkLoad(false); }));
   const n2 = $('#wk-new2'); if (n2) n2.onclick = wkNew;
 }
+/* ---------- raw API helpers ---------- */
+function authHeaders(extra = {}) { const h = { ...extra }; try { const tk = localStorage.getItem('mch-token'); if (tk) h['x-mch-token'] = tk; } catch { /* ignore */ } return h; }
+async function apiRaw(path, method, body, type) { const r = await fetch('/api' + path, { method, headers: authHeaders({ 'Content-Type': type || 'application/octet-stream' }), body, credentials: 'same-origin' }); return r.json().catch(() => ({ ok: false, error: 'সার্ভার উত্তর দেয়নি' })); }
+async function apiBlob(path) { const r = await fetch('/api' + path, { headers: authHeaders(), credentials: 'same-origin' }); if (!r.ok) throw new Error('ডাউনলোড ব্যর্থ'); return r.blob(); }
+function saveBlob(blob, name) { const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.append(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 800); }
+const fmtSize = (n) => (n >= 1048576 ? (n / 1048576).toFixed(1) + ' MB' : n >= 1024 ? (n / 1024).toFixed(1) + ' KB' : n + ' B');
+const DAYN = ['রবি', 'সোম', 'মঙ্গল', 'বুধ', 'বৃহ', 'শুক্র', 'শনি'];
+let INS = null, SYS = null;
+
+/* ---------- Workers: overview (বিশ্লেষণ) ---------- */
+function heatHtml(heat) {
+  const mx = Math.max(1, ...heat.flat());
+  const cells = heat.map((row, d) => `<div class="hl">${DAYN[d]}</div>${row.map((v, h) => `<i title="${DAYN[d]} ${String(h).padStart(2, '0')}:00 : ${v} রিকোয়েস্ট" style="background:rgba(124,92,255,${v ? 0.14 + 0.86 * v / mx : 0.05});${v ? 'box-shadow:0 0 ' + Math.round(8 * v / mx) + 'px rgba(124,92,255,.5)' : ''}"></i>`).join('')}`).join('');
+  return `<div class="heat">${cells}</div><div class="heat-x">${[0, 6, 12, 18, 23].map((h) => `<span>${String(h).padStart(2, '0')}</span>`).join('')}</div>`;
+}
 function wkOverview(w) {
-  const s = W.stat || { agg: w.agg, lat: { p50: 0, p95: 0 }, recent: [] }, a = s.agg;
-  const codes = a.codes30, tot = Math.max(1, codes.reduce((x, y) => x + y, 0));
-  const cl = [['2xx সফল', 'ok'], ['3xx রিডাইরেক্ট', 'a2'], ['4xx ক্লায়েন্ট ত্রুটি', 'warn'], ['5xx সার্ভার ত্রুটি', 'bad']];
-  return `<div class="grid g4">${tile('আজকের রিকোয়েস্ট', nf(a.today.req), `গতকাল ${nf(a.yesterday.req)} · ৭ দিনে ${nf(a.d7.req)}`, 'pulse', 'var(--ok)')}${tile('আজকের ত্রুটি (5xx)', nf(a.today.err), a.today.req ? (a.today.err / a.today.req * 100).toFixed(1) + '% ত্রুটি হার' : '--', 'warn', 'var(--bad)')}${tile('গড় লেটেন্সি', avgMs(a.today) + ' ms', `p50 ${s.lat.p50} · p95 ${s.lat.p95} ms`, 'clock', 'var(--a2)')}${tile('মোট রিকোয়েস্ট', nf(a.total), `৩০ দিনে ${nf(a.d30.req)}`, 'bolt', 'var(--a1)')}</div>
+  const s = W.stat || { agg: w.agg, lat: { p50: 0, p95: 0, p99: 0 }, recent: [], extra: { top: [], methods: {}, ua: {}, lhist: [0, 0, 0, 0, 0, 0, 0] } }, a = s.agg, x = s.extra || { top: [], methods: {}, ua: {}, lhist: [] };
+  const codes = a.codes30, tot = Math.max(1, codes.reduce((p, q) => p + q, 0));
+  const cl = [['2xx সফল', 'ok'], ['3xx রিডাইরেক্ট', 'a2'], ['4xx ক্লায়েন্ট', 'warn'], ['5xx সার্ভার', 'bad']];
+  const lt = Math.max(1, (x.lhist || []).reduce((p, q) => p + q, 0)), ln = ['<10ms', '<25ms', '<50ms', '<100ms', '<250ms', '<1সে', '≥1সে'];
+  const uaT = Math.max(1, Object.values(x.ua || {}).reduce((p, q) => p + q, 0)), mT = Math.max(1, Object.values(x.methods || {}).reduce((p, q) => p + q, 0));
+  const inv = a.inv || { ok: 0, exc: 0, tmo: 0 };
+  return `<div class="grid g4">${tile('আজকের রিকোয়েস্ট', nf(a.today.req), `গতকাল ${nf(a.yesterday.req)} · ৭ দিনে ${nf(a.d7.req)}`, 'pulse', 'var(--ok)')}${tile('আজকের ত্রুটি (5xx)', nf(a.today.err), a.today.req ? (a.today.err / a.today.req * 100).toFixed(1) + '% ত্রুটি হার' : '--', 'warn', 'var(--bad)')}${tile('গড় লেটেন্সি', avgMs(a.today) + ' ms', `p50 ${s.lat.p50} · p95 ${s.lat.p95} · p99 ${s.lat.p99 || 0}`, 'clock', 'var(--a2)')}${tile('মোট রিকোয়েস্ট', nf(a.total), `৩০ দিনে ${nf(a.d30.req)}`, 'bolt', 'var(--a1)')}</div>
+  <div class="grid g4" style="margin-top:16px">${tile('ডাটা ট্রান্সফার (আজ)', fmtSize(a.today.bytes || 0), `৩০ দিনে ${fmtSize(a.d30.bytes || 0)}`, 'cloud', 'var(--a3)')}${tile('গড় CPU সময়', (a.today.req ? Math.round((a.today.cpu || 0) / a.today.req * 10) / 10 : 0) + ' ms', 'প্রতি রিকোয়েস্ট (আজ)', 'chip', 'var(--a1)')}${tile('ত্রুটির ধরন (৩০ দিন)', nf(inv.exc + inv.tmo), `exception ${inv.exc} · টাইমআউট ${inv.tmo}`, 'warn', 'var(--warn)')}${tile('প্রজেক্ট', `${w.fileCount} <span style="font-size:16px;opacity:.6">ফাইল</span>`, `${fmtSize(w.totalSize || 0)} · KV ${w.kvKeys} · ENV ${w.envCount}`, 'folder', 'var(--ok)')}</div>
   ${w.state === 'error' ? `<div class="g p" style="margin-top:16px;border-color:rgba(255,90,115,.5)"><b style="color:var(--bad)">Worker ত্রুটিতে আছে</b><pre class="mono" style="white-space:pre-wrap;margin:8px 0 0;font-size:12px">${esc(w.error)}</pre></div>` : ''}
   ${wkCharts(a)}
-  <div class="grid g2" style="margin-top:16px"><div class="g p"><div class="h3">স্ট্যাটাস কোড (৩০ দিন)</div><div class="col">${cl.map(([n, c], i) => `<div><div class="row"><span style="flex:1">${n}</span><span class="mut">${nf(codes[i])}</span></div><div class="bar"><i style="width:${codes[i] / tot * 100}%;background:var(--${c})"></i></div></div>`).join('')}</div><div class="dim" style="margin-top:14px">KV key: ${w.kvKeys} &nbsp; ENV: ${w.envCount} &nbsp; Cron: ${w.cronMin ? 'প্রতি ' + w.cronMin + ' মিনিট' : 'বন্ধ'}</div></div>
-  <div class="g p"><div class="h3">সাম্প্রতিক রিকোয়েস্ট</div><div class="scr" style="overflow:auto;max-height:300px">${s.recent.length ? `<table class="tbl"><tr><th>সময়</th><th>মেথড</th><th>পাথ</th><th>স্ট্যাটাস</th><th>ms</th></tr>${s.recent.slice(0, 25).map((r) => `<tr><td>${new Date(r.t).toLocaleTimeString()}</td><td>${esc(r.method)}</td><td class="mono" style="max-width:190px;overflow:hidden;text-overflow:ellipsis">${esc(r.path)}</td><td class="st${String(r.status)[0]}">${r.status}</td><td>${r.ms}</td></tr>`).join('')}</table>` : '<div class="mut">এখনো কোনো রিকোয়েস্ট আসেনি। URL-এ গিয়ে বা টেস্ট ট্যাবে পাঠান।</div>'}</div></div></div>`;
+  <div class="grid g2" style="margin-top:16px"><div class="g p"><div class="h3">কখন বেশি ব্যবহার হয় (৩০ দিন, ঘণ্টা × বার)</div>${heatHtml(a.heat || Array.from({ length: 7 }, () => Array(24).fill(0)))}</div>
+  <div class="g p"><div class="h3">লেটেন্সি বিন্যাস (সাম্প্রতিক)</div><div class="col" style="gap:8px">${(x.lhist || []).map((n, i) => `<div class="row"><span class="mono" style="width:62px;font-size:12px">${ln[i]}</span><div class="bar" style="flex:1"><i style="width:${n / lt * 100}%"></i></div><span class="mut" style="width:44px;text-align:right">${nf(n)}</span></div>`).join('')}</div></div></div>
+  <div class="grid g3" style="margin-top:16px"><div class="g p"><div class="h3">স্ট্যাটাস কোড (৩০ দিন)</div><div class="col">${cl.map(([n, c], i) => `<div><div class="row"><span style="flex:1">${n}</span><span class="mut">${nf(codes[i])}</span></div><div class="bar"><i style="width:${codes[i] / tot * 100}%;background:var(--${c})"></i></div></div>`).join('')}</div></div>
+  <div class="g p"><div class="h3">ডিভাইস ও মেথড</div><div class="col" style="gap:8px">${Object.entries(x.ua || {}).sort((p, q) => q[1] - p[1]).map(([k, n]) => `<div><div class="row"><span style="flex:1">${esc(k)}</span><span class="mut">${Math.round(n / uaT * 100)}%</span></div><div class="bar"><i style="width:${n / uaT * 100}%;background:var(--a3)"></i></div></div>`).join('') || '<div class="mut">এখনো তথ্য নেই</div>'}<div class="row wrap" style="margin-top:6px">${Object.entries(x.methods || {}).sort((p, q) => q[1] - p[1]).map(([k, n]) => `<span class="pill">${esc(k)} ${Math.round(n / mT * 100)}%</span>`).join('')}</div></div></div>
+  <div class="g p"><div class="h3">শীর্ষ এন্ডপয়েন্ট</div>${(x.top || []).length ? `<table class="tbl"><tr><th>পাথ</th><th>রিকোয়েস্ট</th><th>ত্রুটি</th><th>ms</th></tr>${x.top.map((t) => `<tr><td class="mono" style="max-width:150px;overflow:hidden;text-overflow:ellipsis">${esc(t.path)}</td><td>${nf(t.req)}</td><td class="${t.err ? 'st5' : ''}">${t.err}</td><td>${t.avg}</td></tr>`).join('')}</table>` : '<div class="mut">এখনো তথ্য নেই</div>'}</div></div>
+  <div class="g p" style="margin-top:16px"><div class="h3">সাম্প্রতিক রিকোয়েস্ট</div><div class="scr" style="overflow:auto;max-height:300px">${s.recent.length ? `<table class="tbl"><tr><th>সময়</th><th>মেথড</th><th>পাথ</th><th>স্ট্যাটাস</th><th>ms</th></tr>${s.recent.slice(0, 25).map((r) => `<tr><td>${new Date(r.t).toLocaleTimeString()}</td><td>${esc(r.method)}</td><td class="mono" style="max-width:260px;overflow:hidden;text-overflow:ellipsis">${esc(r.path)}</td><td class="st${String(r.status)[0]}">${r.status}</td><td>${r.ms}</td></tr>`).join('')}</table>` : '<div class="mut">এখনো কোনো রিকোয়েস্ট আসেনি। URL-এ গিয়ে বা টেস্ট ট্যাবে পাঠান।</div>'}</div></div>`;
 }
 
-function wkCodeTab(w, el) {
-  el.innerHTML = `<div class="g p"><div class="row wrap" style="margin-bottom:12px"><div class="h3" style="margin:0;flex:1">worker.js</div><input type="file" id="wk-file" accept=".js,.mjs,.cjs,.txt" hidden><button class="btn sm" id="wk-up">${ic('upload')}ফাইল আপলোড</button>${w.hasPrev ? `<button class="btn sm" id="wk-rb">${ic('undo')}আগের সংস্করণ</button>` : ''}<button class="btn pri sm" id="wk-dep">${ic('bolt')}ডিপ্লয়</button></div><div class="drop" id="wk-drop">worker.js ফাইল এখানে ছেড়ে দিন বা চাপ দিয়ে বাছুন</div><textarea class="in" id="wk-code" spellcheck="false" style="min-height:420px;margin-top:12px">লোড হচ্ছে...</textarea><div id="wk-err" style="margin-top:10px"></div><div class="dim" style="margin-top:8px">ফরম্যাট: <span class="mono">export default { async fetch(request, env, ctx) { ... } }</span> অথবা <span class="mono">addEventListener('fetch', ...)</span>। ডিপ্লয় ব্যর্থ হলে আগের কোডই চালু থাকে।</div></div>`;
-  api(`/workers/${w.id}/code`).then((r) => { const t = $('#wk-code'); if (t && r.ok) t.value = r.code; });
-  const load = (f) => { if (!f) return; if (f.size > 900000) return toast('ফাইল অনেক বড়', 'bad'); const rd = new FileReader(); rd.onload = () => { $('#wk-code').value = String(rd.result); toast(f.name + ' লোড হয়েছে, এখন ডিপ্লয় চাপুন', 'ok'); }; rd.readAsText(f); };
-  $('#wk-up').onclick = () => $('#wk-file').click();
-  $('#wk-drop').onclick = () => $('#wk-file').click();
-  $('#wk-file').onchange = (e) => load(e.target.files[0]);
-  const d = $('#wk-drop');
-  ['dragover', 'dragenter'].forEach((ev) => d.addEventListener(ev, (e) => { e.preventDefault(); d.classList.add('on'); }));
-  ['dragleave', 'drop'].forEach((ev) => d.addEventListener(ev, (e) => { e.preventDefault(); d.classList.remove('on'); }));
-  d.addEventListener('drop', (e) => load(e.dataTransfer.files[0]));
-  $('#wk-dep').onclick = async () => {
-    const b = $('#wk-dep'); b.disabled = true;
-    const r = await api(`/workers/${w.id}/code`, 'PUT', { code: $('#wk-code').value });
-    b.disabled = false;
-    const er = $('#wk-err');
-    if (r.ok) { er.innerHTML = ''; toast('ডিপ্লয় সফল, Worker চালু', 'ok'); } else er.innerHTML = `<div style="padding:12px;border-radius:14px;background:rgba(255,90,115,.12);border:1px solid rgba(255,90,115,.4)"><b>ডিপ্লয় ব্যর্থ${r.rolledBack ? ' (আগের কোড ফেরত আনা হয়েছে)' : ''}</b><pre class="mono" style="white-space:pre-wrap;margin:8px 0 0;font-size:12px">${esc(r.error)}</pre></div>`;
+/* ---------- Workers: ফাইল ম্যানেজার ---------- */
+const FX = { files: [], cur: null, open: new Set(), dirty: false, entry: '' };
+function wkTree(files) {
+  const root = { dirs: {}, files: [] };
+  for (const f of files) { const p = f.path.split('/'); let n = root; for (let i = 0; i < p.length - 1; i++) n = (n.dirs[p[i]] ||= { dirs: {}, files: [], path: p.slice(0, i + 1).join('/') }); n.files.push(f); }
+  return root;
+}
+function treeHtml(n, depth) {
+  let h = '';
+  for (const d of Object.keys(n.dirs).sort()) { const dn = n.dirs[d], open = FX.open.has(dn.path); h += `<div class="fr dir" data-dir="${esc(dn.path)}" style="padding-left:${depth * 14 + 8}px"><span class="chev ${open ? 'o' : ''}">›</span>${ic('folder')}<span class="fn">${esc(d)}</span></div>${open ? treeHtml(dn, depth + 1) : ''}`; }
+  for (const f of n.files.sort((a, b) => a.path.localeCompare(b.path))) h += `<div class="fr file ${FX.cur === f.path ? 'on' : ''}" data-file="${esc(f.path)}" style="padding-left:${depth * 14 + 22}px">${ic(f.path === FX.entry ? 'star' : 'file')}<span class="fn">${esc(f.path.split('/').pop())}</span><small>${fmtSize(f.size)}</small><span class="fa"><b data-ren="${esc(f.path)}" title="নাম/পাথ বদল">${ic('edit')}</b><b data-delf="${esc(f.path)}" title="মুছুন">${ic('trash')}</b></span></div>`;
+  return h;
+}
+async function collectDropped(dt) {
+  const out = [];
+  const walk = async (entry, prefix) => {
+    if (entry.isFile) await new Promise((res) => entry.file((f) => { out.push({ file: f, path: prefix + f.name }); res(); }, res));
+    else if (entry.isDirectory) { const rd = entry.createReader(); let batch; do { batch = await new Promise((res) => rd.readEntries(res, () => res([]))); for (const e of batch) await walk(e, prefix + entry.name + '/'); } while (batch.length); }
+  };
+  const items = [...(dt.items || [])].map((i) => (i.webkitGetAsEntry ? i.webkitGetAsEntry() : null)).filter(Boolean);
+  if (items.length) for (const e of items) await walk(e, ''); else for (const f of dt.files) out.push({ file: f, path: f.name });
+  return out;
+}
+
+async function wkFilesTab(w, el) {
+  const wid = w.id;
+  el.innerHTML = `<div class="fm"><div class="g p fm-tree"><div class="row wrap" style="margin-bottom:10px;gap:6px"><div class="h3" style="margin:0;flex:1" id="fm-count">...</div><input type="file" id="fm-in" multiple hidden><input type="file" id="fm-dir" webkitdirectory hidden><input type="file" id="fm-zip" accept=".zip" hidden>
+    <button class="btn sm" id="fm-up" title="ফাইল আপলোড">${ic('upload')}ফাইল</button><button class="btn sm" id="fm-updir" title="ফোল্ডার আপলোড">${ic('folder')}ফোল্ডার</button><button class="btn sm" id="fm-upzip" title="ZIP ইমপোর্ট">ZIP</button><button class="btn sm" id="fm-new" title="নতুন ফাইল">${ic('plus')}নতুন</button></div>
+    <div class="scr fm-list" id="fm-list"></div><div class="drop" id="fm-drop" style="margin-top:10px">ফাইল, ফোল্ডার বা ZIP এখানে ছেড়ে দিন</div><div class="dim" id="fm-prog" style="margin-top:6px"></div>
+    <div class="row wrap" style="margin-top:10px"><button class="btn sm" id="fm-exp">${ic('down')}ZIP নামান</button></div></div>
+  <div class="g p fm-ed"><div class="row wrap" style="margin-bottom:10px;gap:6px"><div style="flex:1;min-width:140px"><b class="mono" id="fm-name">ফাইল বাছুন</b> <span class="pill hide" id="fm-dirty" style="color:var(--warn)">অসংরক্ষিত</span></div><button class="btn sm hide" id="fm-entry">${ic('star')}এন্ট্রি করুন</button><button class="btn sm hide" id="fm-dl">${ic('down')}</button><button class="btn sm hide" id="fm-save">${ic('check')}সেভ</button><button class="btn pri sm" id="fm-dep">${ic('bolt')}ডিপ্লয়</button></div>
+    <div id="fm-body"><div class="empty">বাঁ পাশ থেকে একটি ফাইল খুলুন। একাধিক ফাইল রাখা যায়: Worker-এর ভেতর <span class="mono">import './lib/x.js'</span> দিয়ে জোড়া লাগে, <span class="mono">public/</span> ফোল্ডার <span class="mono">env.ASSETS</span> দিয়ে সার্ভ হয়, <span class="mono">.env</span> ফাইলও লোড হয়।</div></div><div id="fm-dres" style="margin-top:10px"></div></div></div>`;
+  const listEl = $('#fm-list');
+  const paint = () => { listEl.innerHTML = treeHtml(wkTree(FX.files), 0) || '<div class="dim" style="padding:12px">কোনো ফাইল নেই</div>'; $('#fm-count').textContent = FX.files.length + ' ফাইল'; };
+  const load = async (keep) => {
+    const r = await api(`/workers/${wid}/files`); if (!r.ok) return toast(r.error, 'bad');
+    FX.files = r.files; FX.entry = r.entry;
+    if (!keep) FX.files.forEach((f) => { const p = f.path.split('/'); for (let i = 1; i < p.length; i++) FX.open.add(p.slice(0, i).join('/')); });
+    paint();
+  };
+  const header = () => { $('#fm-name').textContent = FX.cur || 'ফাইল বাছুন'; $('#fm-dl').classList.toggle('hide', !FX.cur); $('#fm-entry').classList.toggle('hide', !(FX.cur && /\.(m?js|cjs)$/.test(FX.cur) && FX.cur !== FX.entry)); $('#fm-save').classList.toggle('hide', !$('#fm-code')); };
+  const openFile = async (p) => {
+    if (FX.dirty && !window.confirm('সেভ না করা পরিবর্তন বাদ যাবে। চালিয়ে যাবেন?')) return;
+    const r = await api(`/workers/${wid}/file?path=${encodeURIComponent(p)}`); if (!r.ok) return toast(r.error, 'bad');
+    FX.cur = p; FX.dirty = false; $('#fm-dirty').classList.add('hide');
+    const ed = $('#fm-body');
+    if (r.text !== undefined) {
+      ed.innerHTML = '<textarea class="in fm-code" id="fm-code" spellcheck="false"></textarea><div id="fm-msg" style="margin-top:8px"></div>';
+      const t = $('#fm-code'); t.value = r.text;
+      t.oninput = () => { FX.dirty = true; $('#fm-dirty').classList.remove('hide'); };
+      t.onkeydown = (e) => { if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); save(false); } else if (e.key === 'Tab') { e.preventDefault(); t.setRangeText('  ', t.selectionStart, t.selectionEnd, 'end'); t.oninput(); } };
+    } else if (r.binary && /\.(png|jpe?g|gif|webp|svg|ico)$/i.test(p)) {
+      ed.innerHTML = `<div class="empty"><img id="fm-img" alt="" style="max-width:100%;max-height:340px;border-radius:12px"><p class="mut">${fmtSize(r.size)}</p></div>`;
+      apiBlob(`/workers/${wid}/raw?path=${encodeURIComponent(p)}`).then((b) => { const i = $('#fm-img'); if (i) i.src = URL.createObjectURL(b); }).catch(() => {});
+    } else ed.innerHTML = `<div class="empty">${r.binary ? 'বাইনারি ফাইল' : 'ফাইলটি অনেক বড় (১MB+), এডিটরে খোলা যাবে না'} · ${fmtSize(r.size)}<br><span class="dim">ডাউনলোড বাটন ব্যবহার করুন</span></div>`;
+    header(); paint();
+  };
+  const deployNow = async () => {
+    const b = $('#fm-dep'); b.disabled = true; $('#fm-dres').innerHTML = '<div class="mut">ডিপ্লয় চলছে...</div>';
+    const r = await api(`/workers/${wid}/deploy`, 'POST'); b.disabled = false;
+    $('#fm-dres').innerHTML = r.ok ? `<div class="alert ok">${ic('check')} ডিপ্লয় সফল, Worker চালু আছে</div>` : `<div class="alert bad"><b>ডিপ্লয় ব্যর্থ${r.rolledBack ? ' (শেষ ভালো ভার্সন ফেরত আনা হয়েছে, ব্যর্থ ফাইলগুলো "ভার্সন" ট্যাবে সংরক্ষিত)' : ''}</b><pre class="mono" style="white-space:pre-wrap;margin:8px 0 0;font-size:12px">${esc(r.error)}</pre></div>`;
+    if (r.ok) toast('ডিপ্লয় সফল', 'ok'); else await load(true);
     wkLoad(false);
   };
-  const rb = $('#wk-rb');
-  if (rb) rb.onclick = async () => { const r = await api(`/workers/${w.id}/rollback`, 'POST'); r.ok ? toast('আগের সংস্করণ ফিরেছে', 'ok') : toast(r.error, 'bad'); await wkLoad(false); const w2 = W.list.find((x) => x.id === w.id); if (w2) wkCodeTab(w2, $('#wk-body')); };
+  const save = async (deploy) => {
+    const t = $('#fm-code'); if (!FX.cur || !t) { if (deploy) await deployNow(); return; }
+    const r = await api(`/workers/${wid}/file`, 'PUT', { path: FX.cur, content: t.value }); if (!r.ok) return toast(r.error, 'bad');
+    FX.dirty = false; $('#fm-dirty').classList.add('hide');
+    $('#fm-msg').innerHTML = r.syntax ? `<div class="alert bad"><b>সিনট্যাক্স সতর্কতা</b><pre class="mono" style="white-space:pre-wrap;margin:6px 0 0;font-size:12px">${esc(r.syntax)}</pre></div>` : '';
+    toast('সেভ হয়েছে', 'ok'); await load(true);
+    if (deploy) await deployNow();
+  };
+  const uploadList = async (list) => {
+    if (!list.length) return;
+    if (list.length === 1 && /\.zip$/i.test(list[0].path) && !list[0].path.includes('/')) return importZip(list[0].file);
+    const tops = new Set(list.map((x) => x.path.split('/')[0])); const strip = tops.size === 1 && list.every((x) => x.path.includes('/')) && list[0].file.webkitRelativePath;
+    let ok = 0, bad = 0;
+    for (let i = 0; i < list.length; i++) {
+      let p = list[i].path; if (strip) p = p.split('/').slice(1).join('/'); if (!p) continue;
+      $('#fm-prog').textContent = `আপলোড ${i + 1}/${list.length}: ${p}`;
+      const r = await apiRaw(`/workers/${wid}/blob?path=${encodeURIComponent(p)}`, 'PUT', list[i].file);
+      if (r.ok) ok++; else { bad++; toast(`${p}: ${r.error}`, 'bad'); }
+    }
+    $('#fm-prog').textContent = ''; toast(`${ok}টি ফাইল আপলোড হয়েছে${bad ? `, ${bad}টি ব্যর্থ` : ''}`, bad ? 'bad' : 'ok');
+    await load(); wkLoad(false);
+  };
+  const importZip = (f) => {
+    const o = modal(`<h3 style="margin:0 0 8px">ZIP ইমপোর্ট</h3><p class="mut" style="margin:0 0 16px">${esc(f.name)} (${fmtSize(f.size)}): ভেতরের সব ফাইল ফোল্ডারসহ সাজিয়ে রাখা হবে।</p><div class="row wrap"><button class="btn" data-m="0">${ic('plus')}বিদ্যমান ফাইলের সাথে যোগ</button><button class="btn bad" data-m="1">${ic('redo')}সব প্রতিস্থাপন</button><button class="btn" data-c>বাতিল</button></div>`);
+    $('[data-c]', o).onclick = () => o.remove();
+    o.querySelectorAll('[data-m]').forEach((b) => (b.onclick = async () => { o.remove(); const r = await apiRaw(`/workers/${wid}/import-zip?replace=${b.dataset.m}`, 'POST', f); r.ok ? toast(`${r.written}টি ফাইল যোগ হয়েছে${r.skipped ? `, ${r.skipped}টি বাদ` : ''}`, 'ok') : toast(r.error, 'bad'); await load(); wkLoad(false); }));
+  };
+  const askPath = (title, value, cb) => {
+    const o = modal(`<h3 style="margin:0 0 12px">${title}</h3><input class="in" id="pp" value="${esc(value)}" placeholder="lib/helpers.js" autocomplete="off" autocapitalize="off"><div class="dim" style="margin:8px 0 16px">ফোল্ডার তৈরি হবে নিজে থেকেই (যেমন public/css/app.css)</div><div class="row" style="justify-content:flex-end"><button class="btn" data-c>বাতিল</button><button class="btn pri" data-y>${ic('check')}ঠিক আছে</button></div>`);
+    $('[data-c]', o).onclick = () => o.remove(); $('[data-y]', o).onclick = () => { const v = $('#pp', o).value.trim(); o.remove(); if (v) cb(v); }; $('#pp', o).onkeydown = (e) => { if (e.key === 'Enter') $('[data-y]', o).click(); }; $('#pp', o).focus();
+  };
+  const rename = (p) => askPath('নাম / পাথ বদলান', p, async (to) => { const r = await api(`/workers/${wid}/move`, 'POST', { from: p, to }); if (!r.ok) return toast(r.error, 'bad'); if (FX.cur === p) FX.cur = to; await load(true); header(); });
+  const remove = (p) => confirmBox(`"${p}" মুছে ফেলবেন?`, async () => { const r = await api(`/workers/${wid}/file?path=${encodeURIComponent(p)}`, 'DELETE'); if (!r.ok) return toast(r.error, 'bad'); if (FX.cur === p) { FX.cur = null; FX.dirty = false; $('#fm-body').innerHTML = '<div class="empty">ফাইল বাছুন</div>'; header(); } await load(true); wkLoad(false); });
+
+  listEl.onclick = (e) => {
+    const ren = e.target.closest('[data-ren]'); if (ren) { e.stopPropagation(); return rename(ren.dataset.ren); }
+    const del = e.target.closest('[data-delf]'); if (del) { e.stopPropagation(); return remove(del.dataset.delf); }
+    const d = e.target.closest('[data-dir]'); if (d) { const p = d.dataset.dir; FX.open.has(p) ? FX.open.delete(p) : FX.open.add(p); return paint(); }
+    const f = e.target.closest('[data-file]'); if (f) openFile(f.dataset.file);
+  };
+  $('#fm-up').onclick = () => $('#fm-in').click(); $('#fm-updir').onclick = () => $('#fm-dir').click(); $('#fm-upzip').onclick = () => $('#fm-zip').click();
+  $('#fm-in').onchange = (e) => { uploadList([...e.target.files].map((f) => ({ file: f, path: f.name }))); e.target.value = ''; };
+  $('#fm-dir').onchange = (e) => { uploadList([...e.target.files].map((f) => ({ file: f, path: f.webkitRelativePath || f.name }))); e.target.value = ''; };
+  $('#fm-zip').onchange = (e) => { if (e.target.files[0]) importZip(e.target.files[0]); e.target.value = ''; };
+  const tree = $('.fm-tree');
+  ['dragover', 'dragenter'].forEach((ev) => tree.addEventListener(ev, (e) => { e.preventDefault(); $('#fm-drop').classList.add('on'); }));
+  ['dragleave', 'drop'].forEach((ev) => tree.addEventListener(ev, (e) => { e.preventDefault(); $('#fm-drop').classList.remove('on'); }));
+  tree.addEventListener('drop', async (e) => uploadList(await collectDropped(e.dataTransfer)));
+  $('#fm-new').onclick = () => askPath('নতুন ফাইল', 'lib/new.js', async (p) => { const r = await api(`/workers/${wid}/file`, 'PUT', { path: p, content: /\.js$/.test(p) ? '// ' + p + '\nexport {};\n' : '' }); if (!r.ok) return toast(r.error, 'bad'); await load(true); const d = p.split('/'); for (let i = 1; i < d.length; i++) FX.open.add(d.slice(0, i).join('/')); openFile(p); });
+  $('#fm-save').onclick = () => save(false); $('#fm-dep').onclick = () => save(true);
+  $('#fm-entry').onclick = async () => { const r = await api(`/workers/${wid}`, 'PATCH', { entry: FX.cur }); r.ok ? toast('এন্ট্রি ফাইল সেট হয়েছে। ডিপ্লয় করুন', 'ok') : toast(r.error, 'bad'); await load(true); header(); };
+  $('#fm-dl').onclick = async () => { try { saveBlob(await apiBlob(`/workers/${wid}/raw?path=${encodeURIComponent(FX.cur)}&download=1`), FX.cur.split('/').pop()); } catch (e) { toast(e.message, 'bad'); } };
+  $('#fm-exp').onclick = async () => { try { saveBlob(await apiBlob(`/workers/${wid}/export`), w.slug + '.zip'); } catch (e) { toast(e.message, 'bad'); } };
+  FX.cur = null; FX.dirty = false;
+  await load();
+  const first = FX.files.find((f) => f.path === FX.entry) || FX.files[0];
+  if (first) openFile(first.path);
+}
+
+/* ---------- Workers: ভার্সন ইতিহাস ---------- */
+async function wkVersTab(w, el) {
+  const r = await api(`/workers/${w.id}/versions`); if (!r.ok) return;
+  const L = { ok: ['সফল', 'var(--ok)'], failed: ['ব্যর্থ', 'var(--bad)'], manual: ['ম্যানুয়াল', 'var(--a2)'] };
+  el.innerHTML = `<div class="g p"><div class="row wrap" style="margin-bottom:12px"><div class="h3" style="margin:0;flex:1">ডিপ্লয় ইতিহাস (সর্বশেষ ৮টি)</div><button class="btn sm" id="vs">${ic('plus')}এখনকার ভার্সন সেভ করুন</button></div>${r.versions.length ? r.versions.map((v) => `<div class="row" style="padding:12px 0;border-bottom:1px solid var(--line);gap:12px"><span class="pill" style="color:${L[v.label][1]}">${L[v.label][0]}</span><div style="flex:1;min-width:0"><b>${new Date(v.ts).toLocaleString()}</b><div class="dim">${v.files} ফাইল · ${fmtSize(v.size)}</div></div><button class="btn sm" data-rv="${esc(v.name)}">${ic('undo')}এটিতে ফিরুন</button></div>`).join('') : '<div class="mut">এখনো কোনো ভার্সন নেই। সফল ডিপ্লয় হলে নিজে থেকেই সংরক্ষণ হয়।</div>'}<div class="dim" style="margin-top:12px">"ব্যর্থ" ভার্সনে ডিপ্লয় ব্যর্থ হওয়ার সময়কার ফাইলগুলো রাখা থাকে, যাতে আপলোড করা কাজ হারায় না।</div></div>`;
+  $('#vs').onclick = async () => { await api(`/workers/${w.id}/snapshot`, 'POST'); toast('ভার্সন সেভ হয়েছে', 'ok'); wkVersTab(w, el); };
+  el.querySelectorAll('[data-rv]').forEach((b) => (b.onclick = () => confirmBox('এই ভার্সনে ফিরে ডিপ্লয় করবেন? বর্তমান ফাইল প্রতিস্থাপিত হবে (আগে "ম্যানুয়াল" ভার্সন সেভ করে রাখুন)।', async () => { const x = await api(`/workers/${w.id}/restore`, 'POST', { name: b.dataset.rv }); x.ok ? toast('ভার্সন ফেরত এসেছে', 'ok') : toast(x.error, 'bad'); wkLoad(false); wkVersTab(w, el); })));
+}
+
+/* ---------- Workers: AI ---------- */
+const WCHAT = {};
+function wkAiTab(w, el) {
+  if (!S.ai.ready) { el.innerHTML = `<div class="g empty">${ic('spark')}<p>AI চালু করতে Mistral API key দিন</p><button class="btn pri" id="goset">সেটিংসে যান</button></div>`; $('#goset').onclick = () => go('set'); return; }
+  const log = (WCHAT[w.id] ||= []);
+  const chgHtml = (m) => m.changes && m.changes.length ? `<div class="col" style="gap:8px;margin-top:10px">${m.changes.map((c) => `<div class="chg"><label class="row" style="margin:0;gap:8px"><input type="checkbox" data-pp="${esc(c.path)}" ${c.error ? 'disabled' : 'checked'}><span class="mono" style="flex:1;overflow:hidden;text-overflow:ellipsis">${esc(c.path)}</span><span class="pill">${c.isNew ? 'নতুন' : 'পরিবর্তন'}</span>${c.error ? '<span class="pill" style="color:var(--bad)">ত্রুটি</span>' : ''}</label>${c.error ? `<div class="dim" style="color:var(--bad)">${esc(String(c.error).split('\n')[0])}</div>` : `<details><summary class="dim">কোড দেখুন</summary><pre class="mono">${esc(c.content.slice(0, 6000))}</pre></details>`}</div>`).join('')}${m.changes.some((c) => !c.error) ? `<div class="row"><button class="btn ok sm" data-apply="${m.i}">${ic('check')}নির্বাচিতগুলো প্রয়োগ ও ডিপ্লয়</button></div>` : ''}</div>` : '';
+  const paint = () => { const c = $('#wa-chat'); c.innerHTML = log.length ? log.map((m, i) => `<div class="msg ${m.role === 'user' ? 'u' : 'a'}">${m.typing ? '<span class="typing"><i></i><i></i><i></i></span>' : esc(m.text)}${m.role === 'ai' && !m.typing ? chgHtml({ ...m, i }) : ''}</div>`).join('') : `<div class="empty">${ic('chat')}<p>Worker-এর সব ফাইল, লগ ও ত্রুটি দেখে AI সাহায্য করে। বলুন কী চান: নতুন এন্ডপয়েন্ট, বাগ ফিক্স, ফাইল ভাগ করা, KV ব্যবহার...</p></div>`; c.scrollTop = c.scrollHeight; c.querySelectorAll('[data-apply]').forEach((b) => (b.onclick = async () => { const m = log[Number(b.dataset.apply)]; const paths = [...b.closest('.msg').querySelectorAll('[data-pp]:checked')].map((x) => x.dataset.pp); if (!paths.length) return toast('কোনো ফাইল বাছা হয়নি', 'bad'); b.disabled = true; const r = await api(`/workers/${w.id}/ai/apply`, 'POST', { paths }); if (r.ok) { toast(`${r.applied}টি ফাইল প্রয়োগ ও ডিপ্লয় সফল`, 'ok'); m.changes = []; m.text += '\n\n(প্রয়োগ হয়েছে)'; } else { toast(r.error, 'bad'); m.text += `\n\n(ব্যর্থ${r.rolledBack ? ', আগের ভার্সন ফেরত' : ''}: ${String(r.error).split('\n')[0]})`; m.changes = []; } paint(); wkLoad(false); })); };
+  el.innerHTML = `<div class="g p"><div class="row wrap" style="margin-bottom:10px"><span class="pill">${ic('spark')}${esc(S.ai.model)}</span><div class="sp"></div><button class="btn sm" id="wa-clr">${ic('trash')}মেমরি মুছুন</button></div><div class="chat scr" id="wa-chat"></div><div class="row wrap" style="margin:10px 0">${['ত্রুটি ও লগ বিশ্লেষণ করো', 'কোড উন্নত করো (নিরাপত্তা, ত্রুটি হ্যান্ডলিং)', '/health এন্ডপয়েন্ট ও CORS যোগ করো', 'কোডকে একাধিক ফাইলে ভাগ করো'].map((q) => `<button class="btn sm" data-q="${esc(q)}">${esc(q)}</button>`).join('')}</div><div class="row"><textarea class="in" id="wa-in" rows="2" style="min-height:0;font-family:var(--font);font-size:14px" placeholder="কী করতে চান লিখুন..."></textarea><button class="btn pri" id="wa-send">${ic('send')}</button></div></div>`;
+  paint();
+  let busy = false;
+  const send = async (text) => {
+    if (busy || !text.trim()) return; busy = true;
+    log.push({ role: 'user', text }); log.push({ role: 'ai', typing: true, text: '' }); paint();
+    const r = await api(`/workers/${w.id}/ai`, 'POST', { text }); log.pop();
+    log.push(r.ok ? { role: 'ai', text: r.reply, changes: r.changes } : { role: 'ai', text: 'ত্রুটি: ' + r.error }); busy = false; paint();
+  };
+  $('#wa-send').onclick = () => { const i = $('#wa-in'); const t = i.value; i.value = ''; send(t); };
+  $('#wa-in').onkeydown = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('#wa-send').click(); } };
+  el.querySelectorAll('[data-q]').forEach((b) => (b.onclick = () => send(b.dataset.q)));
+  $('#wa-clr').onclick = () => confirmBox('এই Worker-এর AI মেমরি মুছবেন?', async () => { await api('/ai/memory?botId=' + encodeURIComponent('w:' + w.id), 'DELETE'); WCHAT[w.id] = []; log.length = 0; paint(); toast('মেমরি মুছেছে', 'ok'); });
+}
+
+/* ---------- Workers: ENV ও সেটিংস ---------- */
+async function wkSettingsTab(w, el) {
+  const e = await api(`/workers/${w.id}/env`); const fl = await api(`/workers/${w.id}/files`);
+  const entries = (fl.files || []).filter((f) => /\.(m?js|cjs)$/.test(f.path));
+  el.innerHTML = `<div class="g p"><div class="row wrap" style="margin-bottom:10px"><div class="h3" style="margin:0;flex:1">Environment Variables</div><input type="file" id="env-file" accept=".env,.txt,.vars,text/plain" hidden><button class="btn sm" id="env-imp">${ic('upload')}.env ইমপোর্ট</button></div><div id="wk-envs">${(e.env || []).map(envRow).join('') || '<div class="dim" id="env-empty" style="margin-bottom:8px">কোনো ভেরিয়েবল নেই</div>'}</div><div class="row wrap" style="margin-top:8px"><button class="btn sm" id="env-add">${ic('plus')}ভেরিয়েবল যোগ</button><div class="sp"></div><button class="btn pri sm" id="env-save">${ic('check')}সেভ ও রিস্টার্ট</button></div><div class="dim" style="margin-top:10px">কোডে <span class="mono">env.KEY</span>, <span class="mono">process.env.KEY</span> বা গ্লোবাল <span class="mono">KEY</span> সব ফাইলে কাজ করে। "গোপন" দিলে ভ্যালু আর দেখা যায় না। প্রজেক্টে <span class="mono">.env</span> ফাইল থাকলে সেটিও লোড হয় (এখানকার মান অগ্রাধিকার পায়)।</div></div>
+  <div class="grid g2" style="margin-top:16px"><div class="g p"><div class="h3">সেটিংস</div><div class="col"><div><label>নাম</label><input class="in" id="ws-n" value="${esc(w.name)}"></div><div><label>URL নাম (/w/...)</label><input class="in" id="ws-s" value="${esc(w.slug)}"></div><div><label>এন্ট্রি ফাইল</label><select class="in" id="ws-e">${entries.map((f) => `<option ${f.path === w.entry ? 'selected' : ''}>${esc(f.path)}</option>`).join('') || `<option>${esc(w.entry)}</option>`}</select></div>
+    <div class="row"><div style="flex:1"><label>Cron (মিনিট, 0=বন্ধ)</label><input class="in" id="ws-c" type="number" min="0" max="1440" value="${w.cronMin}"></div><div style="flex:1"><label>Rate limit (প্রতি IP/মিনিট, 0=বন্ধ)</label><input class="in" id="ws-r" type="number" min="0" value="${w.rateLimit || 0}"></div></div><button class="btn pri" id="ws-save" style="align-self:flex-start">${ic('check')}সেভ</button></div></div>
+  <div class="g p"><div class="h3">অ্যাকশন</div><div class="col"><button class="btn" id="ws-clone">${ic('copy')}Worker ক্লোন করুন</button><button class="btn" id="ws-exp">${ic('down')}সব ফাইল ZIP নামান</button><button class="btn bad" id="ws-del">${ic('trash')}Worker মুছুন</button><div class="dim">ক্লোন বন্ধ অবস্থায় তৈরি হয় (ফাইল, ENV, সেটিংসসহ)।</div></div></div></div>`;
+  const box = $('#wk-envs');
+  $('#env-add').onclick = () => { const em = $('#env-empty'); if (em) em.remove(); box.insertAdjacentHTML('beforeend', envRow()); box.lastElementChild.querySelector('input').focus(); };
+  box.onclick = (ev) => { const d = ev.target.closest('[data-del]'); if (d) d.closest('.rw').remove(); };
+  box.onchange = (ev) => { if (ev.target.matches('[data-s]')) ev.target.closest('.rw').querySelector('[data-v]').type = ev.target.checked ? 'password' : 'text'; };
+  $('#env-imp').onclick = () => $('#env-file').click();
+  $('#env-file').onchange = (ev) => {
+    const f = ev.target.files[0]; if (!f) return; const rd = new FileReader();
+    rd.onload = () => {
+      let n = 0; const em = $('#env-empty'); if (em) em.remove();
+      String(rd.result).split('\n').forEach((line) => { const m = line.match(/^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*?)\s*$/); if (!m || line.trim().startsWith('#')) return; const ex = [...box.querySelectorAll('.rw')].find((r) => r.querySelector('[data-k]').value === m[1]); const val = m[2].replace(/^(["'])(.*)\1$/, '$2'), sec = /key|token|secret|pass|pwd|private/i.test(m[1]);
+        if (ex) { ex.querySelector('[data-v]').value = val; } else { box.insertAdjacentHTML('beforeend', envRow({ key: m[1], value: val, secret: sec })); box.lastElementChild.querySelector('[data-v]').value = val; } n++; });
+      toast(`${n}টি ভেরিয়েবল যোগ হয়েছে। "সেভ ও রিস্টার্ট" চাপুন`, n ? 'ok' : 'bad');
+    };
+    rd.readAsText(f); ev.target.value = '';
+  };
+  $('#env-save').onclick = async () => {
+    const env = [...box.querySelectorAll('.rw')].map((r) => ({ key: r.querySelector('[data-k]').value.trim(), value: r.querySelector('[data-v]').value, secret: r.querySelector('[data-s]').checked })).filter((x) => x.key);
+    const r = await api(`/workers/${w.id}/env`, 'PUT', { env }); if (!r.ok) return toast(r.error, 'bad');
+    toast(r.deploy && r.deploy.ok === false ? 'সেভ হয়েছে কিন্তু Worker চালু হয়নি' : 'ENV সেভ হয়েছে, Worker রিস্টার্ট', r.deploy && r.deploy.ok === false ? 'bad' : 'ok');
+    await wkLoad(false); wkSettingsTab(W.list.find((x) => x.id === w.id) || w, $('#wk-body'));
+  };
+  $('#ws-save').onclick = async () => { const r = await api(`/workers/${w.id}`, 'PATCH', { name: $('#ws-n').value.trim(), slug: $('#ws-s').value.trim(), cronMin: $('#ws-c').value, rateLimit: $('#ws-r').value, entry: $('#ws-e').value }); if (!r.ok) return toast(r.error, 'bad'); toast('সেভ হয়েছে (এন্ট্রি বদলালে ডিপ্লয় করুন)', 'ok'); wkLoad(true); };
+  $('#ws-clone').onclick = async () => { const r = await api(`/workers/${w.id}/clone`, 'POST', { name: w.name + ' copy' }); if (!r.ok) return toast(r.error, 'bad'); toast('ক্লোন তৈরি হয়েছে (বন্ধ অবস্থায়)', 'ok'); W.id = r.id; W.tab = 'overview'; wkLoad(true); };
+  $('#ws-exp').onclick = async () => { try { saveBlob(await apiBlob(`/workers/${w.id}/export`), w.slug + '.zip'); } catch (er) { toast(er.message, 'bad'); } };
+  $('#ws-del').onclick = () => confirmBox('Worker, তার সব ফাইল, ভার্সন ও KV ডাটা মুছে যাবে। নিশ্চিত?', async () => { await api(`/workers/${w.id}`, 'DELETE'); W.id = null; toast('মুছে ফেলা হয়েছে', 'ok'); wkLoad(true); });
+}
+
+/* ---------- ড্যাশবোর্ড: স্মার্ট ইনসাইট ও সিস্টেম ---------- */
+function gaugeHtml(pctv, label, value, color) {
+  const c = 2 * Math.PI * 24, p = Math.max(0, Math.min(100, pctv));
+  return `<div class="gauge"><div class="ring"><svg width="62" height="62" viewBox="0 0 62 62"><circle cx="31" cy="31" r="24" fill="none" stroke="rgba(255,255,255,.1)" stroke-width="6"/><circle cx="31" cy="31" r="24" fill="none" stroke="${color}" stroke-width="6" stroke-linecap="round" stroke-dasharray="${c}" stroke-dashoffset="${c * (1 - p / 100)}" style="transition:stroke-dashoffset .8s"/></svg><b style="font-size:12px">${esc(value)}</b></div><div class="dim" style="text-align:center">${esc(label)}</div></div>`;
+}
+function dashSmart() {
+  const lvc = { bad: 'var(--bad)', warn: 'var(--warn)', info: 'var(--a2)', good: 'var(--ok)' };
+  const ins = (INS || []).slice(0, 6);
+  const insHtml = ins.length ? ins.map((x) => `<div class="ins" style="--c:${lvc[x.level]}"><i></i><div style="flex:1;min-width:0"><b>${esc(x.title)}</b><div class="dim">${esc(x.text)}</div></div>${x.action ? `<button class="btn sm" data-ins="${esc(x.action.page)}|${esc(x.action.id || '')}">${esc(x.action.label)}</button>` : ''}</div>`).join('') : '<div class="mut">বিশ্লেষণ হচ্ছে...</div>';
+  const hh = S.history.map((p, i, a) => ({ ...p, wrpm: i ? Math.max(0, (p.wreq || 0) - (a[i - 1].wreq || 0)) * 2 : 0 }));
+  const s = SYS;
+  const sysHtml = s ? `<div class="row wrap" style="justify-content:space-around;gap:10px">${gaugeHtml(s.totalMem ? s.rss / s.totalMem * 100 : 0, 'প্যানেল RAM', s.rss + 'MB', 'var(--a2)')}${gaugeHtml(Math.min(100, s.lag / 2), 'Event-loop lag', s.lag + 'ms', s.lag > 150 ? 'var(--bad)' : 'var(--ok)')}${gaugeHtml(Math.min(100, s.load[0] / s.cpus * 100), 'CPU লোড', String(s.load[0]), 'var(--a1)')}${gaugeHtml(Math.min(100, s.disk / 5), 'ডাটা ফোল্ডার', s.disk + 'MB', 'var(--a3)')}</div><div class="dim" style="margin-top:10px">Node ${esc(s.node)} · প্রসেস: বট ${s.procs.bots}, Worker ${s.procs.workers} · খালি RAM ${s.freeMem}MB</div>` : '<div class="mut">লোড হচ্ছে...</div>';
+  return `<div class="grid g2" style="margin-bottom:16px"><div class="g p"><div class="h3">স্মার্ট ইনসাইট</div><div class="col" style="gap:10px">${insHtml}</div></div><div class="g p"><div class="h3">সিস্টেম স্বাস্থ্য</div>${sysHtml}</div></div>
+  <div class="grid g3" style="margin-bottom:16px"><div class="g p"><div class="h3">Worker রিকোয়েস্ট / মিনিট</div>${spark(hh, 'wrpm', '#7c5cff')}</div><div class="g p"><div class="h3">প্যানেল RAM (MB)</div>${spark(hh, 'rss', '#27d3ff')}</div><div class="g p"><div class="h3">Event-loop lag (ms)</div>${spark(hh, 'lag', '#ff5cae')}</div></div>`;
+}
+
+/* ---------- থিম স্টুডিও ও অডিট ---------- */
+const ACCENTS = [['aurora', 'অরোরা', '#7c5cff', '#27d3ff'], ['sunset', 'সানসেট', '#ff7a45', '#ff3d81'], ['ocean', 'মহাসাগর', '#2b8cff', '#14e1d0'], ['emerald', 'পান্না', '#10d98c', '#b6ff5c'], ['rose', 'গোলাপ', '#ff5c8a', '#b45cff'], ['mono', 'মনো', '#9aa4c7', '#e3e7fb']];
+function setAccent(k) { document.documentElement.dataset.accent = k; try { localStorage.setItem('mch-accent', k); } catch { /* ignore */ } if (window.fxRefresh) window.fxRefresh(); }
+function themeStudio() {
+  const cur = document.documentElement.dataset.accent || 'aurora', fx = (() => { try { return localStorage.getItem('mch-fx') !== 'off'; } catch { return true; } })();
+  return `<div class="g p" style="margin-top:16px"><div class="h3">থিম স্টুডিও</div><div class="row wrap" style="gap:12px">${ACCENTS.map(([k, n, a, b]) => `<button class="swatch ${cur === k ? 'on' : ''}" data-acc="${k}" style="--s1:${a};--s2:${b}" title="${n}"><i></i><span>${n}</span></button>`).join('')}</div><div class="row" style="margin-top:16px"><div style="flex:1"><b>ব্যাকগ্রাউন্ড অ্যানিমেশন</b><div class="dim">অরোরা, গ্রিড ও কণা। ফোন/ধীর ডিভাইসে বন্ধ রাখলে ব্যাটারি বাঁচে।</div></div><div class="sw ${fx ? 'on' : ''}" id="fx-sw"></div></div></div>`;
+}
+function bindTheme() {
+  document.querySelectorAll('[data-acc]').forEach((b) => (b.onclick = () => { setAccent(b.dataset.acc); document.querySelectorAll('[data-acc]').forEach((x) => x.classList.toggle('on', x === b)); }));
+  const sw = $('#fx-sw'); if (sw) sw.onclick = () => { sw.classList.toggle('on'); const on = sw.classList.contains('on'); try { localStorage.setItem('mch-fx', on ? 'on' : 'off'); } catch { /* ignore */ } if (window.fxToggle) window.fxToggle(on); };
+}
+async function loadAudit() {
+  const el = $('#audit'); if (!el) return; const r = await api('/audit'); if (!r.ok || !$('#audit')) return;
+  const L = { login: 'লগইন', 'login-fail': 'ভুল পাসওয়ার্ড', api: 'কাজ' };
+  el.innerHTML = r.items.length ? `<table class="tbl">${r.items.slice(0, 60).map((a) => `<tr><td>${new Date(a.t).toLocaleString()}</td><td><span class="pill" style="${a.type === 'login-fail' ? 'color:var(--bad)' : ''}">${L[a.type] || esc(a.type)}</span></td><td class="mono" style="max-width:260px;overflow:hidden;text-overflow:ellipsis">${esc(a.detail)}</td><td class="dim">${esc(a.ip)}</td></tr>`).join('')}</table>` : '<div class="mut">এখনো কিছু নেই</div>';
 }
 
 function envRow(x = {}) {
   return `<div class="erow rw" style="margin-bottom:8px"><input class="in" data-k placeholder="KEY" value="${esc(x.key || '')}" autocomplete="off" autocapitalize="off"><input class="in" data-v type="${x.secret ? 'password' : 'text'}" placeholder="${x.secret && x.has ? '•••••••• (সেভ করা আছে)' : 'ভ্যালু'}" value="${x.secret ? '' : esc(x.value || '')}" autocomplete="off"><label class="row" style="margin:0;gap:6px;font-size:12px"><input type="checkbox" data-s ${x.secret ? 'checked' : ''}>গোপন</label><button class="btn bad sm" data-del>${ic('x')}</button></div>`;
 }
-async function wkSettingsTab(w, el) {
-  const e = await api(`/workers/${w.id}/env`);
-  el.innerHTML = `<div class="g p"><div class="h3">Environment Variables</div><div id="wk-envs">${(e.env || []).map(envRow).join('') || '<div class="dim" id="env-empty" style="margin-bottom:8px">কোনো ভেরিয়েবল নেই</div>'}</div><div class="row wrap" style="margin-top:8px"><button class="btn sm" id="env-add">${ic('plus')}ভেরিয়েবল যোগ</button><div class="sp"></div><button class="btn pri sm" id="env-save">${ic('check')}সেভ ও রিস্টার্ট</button></div><div class="dim" style="margin-top:10px">কোডে <span class="mono">env.KEY</span> (বা <span class="mono">process.env.KEY</span>)। "গোপন" দিলে ভ্যালু আর দেখা যায় না। <span class="mono">env.KV</span> দিয়ে স্থায়ী ডাটা রাখা যায়।</div></div>
-  <div class="g p" style="margin-top:16px"><div class="h3">সেটিংস</div><div class="col" style="max-width:560px"><div><label>নাম</label><input class="in" id="ws-n" value="${esc(w.name)}"></div><div><label>URL নাম (/w/...)</label><input class="in" id="ws-s" value="${esc(w.slug)}"></div><div><label>Cron: প্রতি কত মিনিটে scheduled() চলবে (0 = বন্ধ)</label><input class="in" id="ws-c" type="number" min="0" max="1440" value="${w.cronMin}"></div><div class="row"><button class="btn pri" id="ws-save">${ic('check')}সেভ</button><div class="sp"></div><button class="btn bad" id="ws-del">${ic('trash')}Worker মুছুন</button></div></div></div>`;
-  const box = $('#wk-envs');
-  $('#env-add').onclick = () => { const em = $('#env-empty'); if (em) em.remove(); box.insertAdjacentHTML('beforeend', envRow()); box.lastElementChild.querySelector('input').focus(); };
-  box.onclick = (ev) => { const d = ev.target.closest('[data-del]'); if (d) d.closest('.rw').remove(); };
-  box.onchange = (ev) => { if (ev.target.matches('[data-s]')) ev.target.closest('.rw').querySelector('[data-v]').type = ev.target.checked ? 'password' : 'text'; };
-  $('#env-save').onclick = async () => {
-    const env = [...box.querySelectorAll('.rw')].map((r) => ({ key: r.querySelector('[data-k]').value.trim(), value: r.querySelector('[data-v]').value, secret: r.querySelector('[data-s]').checked })).filter((x) => x.key);
-    const r = await api(`/workers/${w.id}/env`, 'PUT', { env });
-    if (!r.ok) return toast(r.error, 'bad');
-    toast(r.deploy && r.deploy.ok === false ? 'সেভ হয়েছে কিন্তু Worker চালু হয়নি' : 'ENV সেভ হয়েছে, Worker রিস্টার্ট', r.deploy && r.deploy.ok === false ? 'bad' : 'ok');
-    await wkLoad(false); wkSettingsTab(W.list.find((x) => x.id === w.id) || w, $('#wk-body'));
-  };
-  $('#ws-save').onclick = async () => { const r = await api(`/workers/${w.id}`, 'PATCH', { name: $('#ws-n').value.trim(), slug: $('#ws-s').value.trim(), cronMin: $('#ws-c').value }); if (!r.ok) return toast(r.error, 'bad'); toast('সেভ হয়েছে', 'ok'); wkLoad(true); };
-  $('#ws-del').onclick = () => confirmBox('Worker, তার কোড ও KV ডাটা মুছে যাবে। নিশ্চিত?', async () => { await api(`/workers/${w.id}`, 'DELETE'); W.id = null; toast('মুছে ফেলা হয়েছে', 'ok'); wkLoad(true); });
-}
-
 function wkLogsTab(w, el) {
   el.innerHTML = `<div class="g p"><div class="row" style="margin-bottom:12px"><div class="h3" style="margin:0;flex:1">console লগ</div><button class="btn sm" id="wl-r">${ic('redo')}রিফ্রেশ</button></div><div class="term" id="wl-t">লোড হচ্ছে...</div></div>`;
   const load = async () => {
@@ -793,30 +1040,31 @@ function wkTestTab(w, el) {
 }
 
 async function wkNew() {
-  if (!W.tpl) { const r = await api('/worker-templates'); W.tpl = r.ok ? r.templates : []; }
+  if (!W.tpl) { const r = await api('/worker-templates'); W.tpl = r.ok ? (r.templates || []) : []; }
   const o = modal(`<h3 style="margin:0 0 14px">নতুন Worker</h3><div class="col">
     <div><label>নাম</label><input class="in" id="nw-n" placeholder="my-api" autocomplete="off"><div class="dim mono" id="nw-u" style="margin-top:6px"></div></div>
     <div class="row wrap"><div style="flex:1;min-width:180px"><label>টেমপ্লেট</label><select class="in" id="nw-t">${W.tpl.map((t) => `<option value="${t.key}">${esc(t.name)}</option>`).join('')}</select></div><div style="align-self:flex-end"><input type="file" id="nw-f" accept=".js,.mjs,.cjs,.txt" hidden><button class="btn" id="nw-up">${ic('upload')}worker.js আপলোড</button></div></div>
-    <div><label>কোড</label><textarea class="in" id="nw-c" spellcheck="false" style="min-height:190px"></textarea></div>
+    <div><label>কোড (একাধিক ফাইল পরে "ফাইল" ট্যাব থেকে যোগ/আপলোড করুন, ZIP ও ফোল্ডারও চলে)</label><textarea class="in" id="nw-c" spellcheck="false" style="min-height:190px"></textarea></div>
     <div><label>ENV (প্রতি লাইনে KEY=value; নামে key/token/secret/pass থাকলে গোপন হবে)</label><textarea class="in" id="nw-e" spellcheck="false" style="min-height:60px" placeholder="GREETING=hello"></textarea></div>
     <div class="row" style="justify-content:flex-end"><button class="btn" data-c>বাতিল</button><button class="btn pri" id="nw-s">${ic('bolt')}তৈরি ও চালু করুন</button></div></div>`);
   o.firstElementChild.style.width = 'min(720px,100%)';
-  const fill = () => { const t = W.tpl.find((x) => x.key === $('#nw-t', o).value); $('#nw-c', o).value = t ? t.code : ''; };
+  let tplFiles = null;
+  const fill = () => { const t = W.tpl.find((x) => x.key === $('#nw-t', o).value); tplFiles = t && t.files ? t.files : null; $('#nw-c', o).value = t ? (t.files ? t.files.map((f) => '// ===== ' + f.path + ' =====\n' + f.content).join('\n') : t.code) : ''; $('#nw-c', o).disabled = !!tplFiles; };
   const prev = () => { const s = slugify($('#nw-n', o).value); $('#nw-u', o).textContent = location.origin + '/w/' + (s || '...'); };
   fill(); prev();
   $('#nw-t', o).onchange = fill; $('#nw-n', o).oninput = prev;
   $('#nw-up', o).onclick = () => $('#nw-f', o).click();
-  $('#nw-f', o).onchange = (e) => { const f = e.target.files[0]; if (!f) return; if (f.size > 900000) return toast('ফাইল অনেক বড়', 'bad'); const rd = new FileReader(); rd.onload = () => { $('#nw-c', o).value = String(rd.result); if (!$('#nw-n', o).value) { $('#nw-n', o).value = f.name.replace(/\.[^.]+$/, ''); prev(); } }; rd.readAsText(f); };
+  $('#nw-f', o).onchange = (e) => { const f = e.target.files[0]; if (!f) return; if (f.size > 900000) return toast('ফাইল অনেক বড়', 'bad'); const rd = new FileReader(); rd.onload = () => { tplFiles = null; $('#nw-c', o).disabled = false; $('#nw-c', o).value = String(rd.result); if (!$('#nw-n', o).value) { $('#nw-n', o).value = f.name.replace(/\.[^.]+$/, ''); prev(); } }; rd.readAsText(f); };
   $('[data-c]', o).onclick = () => o.remove();
   $('#nw-s', o).onclick = async () => {
     const env = $('#nw-e', o).value.split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('#')).map((l) => { const i = l.indexOf('='); return i > 0 ? { key: l.slice(0, i).trim(), value: l.slice(i + 1).trim(), secret: /key|token|secret|pass/i.test(l.slice(0, i)) } : null; }).filter(Boolean);
     const b = $('#nw-s', o); b.disabled = true;
-    const r = await api('/workers', 'POST', { name: $('#nw-n', o).value.trim(), code: $('#nw-c', o).value, env });
+    const r = await api('/workers', 'POST', tplFiles ? { name: $('#nw-n', o).value.trim(), files: tplFiles, env } : { name: $('#nw-n', o).value.trim(), code: $('#nw-c', o).value, env });
     b.disabled = false;
     if (!r.ok) return toast(r.error, 'bad');
     o.remove();
     toast(r.deploy.ok ? 'Worker চালু হয়েছে' : 'তৈরি হয়েছে কিন্তু চালু হয়নি: ' + String(r.deploy.error).split('\n')[0], r.deploy.ok ? 'ok' : 'bad');
-    W.id = r.id; W.tab = r.deploy.ok ? 'overview' : 'code'; W.stat = null; wkLoad(true);
+    W.id = r.id; W.tab = r.deploy.ok ? 'overview' : 'files'; W.stat = null; wkLoad(true);
   };
   $('#nw-n', o).focus();
 }
@@ -834,6 +1082,65 @@ function newBot() {
   $('[data-s]', o).onclick = async () => { const r = await api('/bots', 'POST', { template: $('#n-t', o).value, username: $('#n-u').value.trim(), host: $('#n-h').value.trim(), port: $('#n-p').value, version: $('#n-v').value.trim() }); if (!r.ok) return toast(r.error, 'bad'); o.remove(); await refresh(); await api(`/bots/${r.id}/start`, 'POST'); toast('বট তৈরি হয়ে চালু হচ্ছে', 'ok'); go('bots', r.id); refresh(); };
   $('#n-u', o).focus();
 }
+
+/* ---------- ব্যাকগ্রাউন্ড: অরোরা + পারস্পেক্টিভ গ্রিড + ভাসমান কণা ---------- */
+(function () {
+  const cv = document.getElementById('fx'); if (!cv) return;
+  const ctx = cv.getContext('2d');
+  const reduce = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let w = 0, h = 0, mx = 0, my = 0, last = 0, on = true, raf = 0, cols = ['#7c5cff', '#27d3ff', '#ff5cae'];
+  const dpr = Math.min(1.5, window.devicePixelRatio || 1);
+  const parts = Array.from({ length: 64 }, () => ({ x: Math.random(), y: Math.random(), z: Math.random() * 0.8 + 0.2, v: Math.random() * 0.00006 + 0.00002, p: Math.random() * 6.28 }));
+  const rgb = (hex, a) => { const n = parseInt(hex.replace('#', '').padEnd(6, '0'), 16); return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})`; };
+  const readCols = () => { const s = getComputedStyle(document.documentElement); cols = ['--a1', '--a2', '--a3'].map((k) => s.getPropertyValue(k).trim() || '#7c5cff'); };
+  const resize = () => { w = innerWidth; h = innerHeight; cv.width = w * dpr; cv.height = h * dpr; cv.style.width = w + 'px'; cv.style.height = h + 'px'; ctx.setTransform(dpr, 0, 0, dpr, 0, 0); };
+  addEventListener('resize', resize); resize(); readCols();
+  addEventListener('mousemove', (e) => { mx = e.clientX / w - 0.5; my = e.clientY / h - 0.5; }, { passive: true });
+  function frame(now) {
+    raf = requestAnimationFrame(frame);
+    if (!on || document.hidden || now - last < 33) return;
+    last = now;
+    const t = now / 1000, light = document.documentElement.dataset.theme === 'light';
+    ctx.clearRect(0, 0, w, h);
+    ctx.globalCompositeOperation = light ? 'multiply' : 'lighter';
+    // অরোরা ফিতা
+    for (let i = 0; i < 3; i++) {
+      const base = h * (0.16 + i * 0.15) + my * 26, amp = 40 + i * 14;
+      const g = ctx.createLinearGradient(0, base - 80, 0, base + 220);
+      g.addColorStop(0, rgb(cols[i], 0)); g.addColorStop(0.45, rgb(cols[i], light ? 0.16 : 0.2)); g.addColorStop(1, rgb(cols[i], 0));
+      ctx.fillStyle = g; ctx.beginPath(); ctx.moveTo(0, h);
+      const pts = [];
+      for (let x = 0; x <= w + 24; x += 24) pts.push([x, base + Math.sin(x * 0.0034 + t * (0.22 + i * 0.07) + i * 2.1) * amp + Math.sin(x * 0.0105 - t * 0.35) * amp * 0.38 + mx * 24]);
+      ctx.lineTo(0, pts[0][1]); pts.forEach((p) => ctx.lineTo(p[0], p[1]));
+      for (let k = pts.length - 1; k >= 0; k--) ctx.lineTo(pts[k][0], pts[k][1] + 120 + Math.sin(pts[k][0] * 0.006 + t * 0.3 + i) * 50);
+      ctx.closePath(); ctx.fill();
+    }
+    // পারস্পেক্টিভ গ্রিড (মেঝে)
+    const hz = h * 0.66, vx = w / 2 + mx * 120;
+    ctx.lineWidth = 1;
+    for (let k = 0; k < 16; k++) {
+      const z = (k + ((t * 0.5) % 1)) / 16, y = hz + (h - hz) * z * z;
+      ctx.strokeStyle = rgb(cols[1], (light ? 0.1 : 0.12) * z); ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
+    }
+    for (let j = -14; j <= 14; j++) {
+      ctx.strokeStyle = rgb(cols[0], light ? 0.07 : 0.1); ctx.beginPath(); ctx.moveTo(vx, hz); ctx.lineTo(w / 2 + j * (w / 9) + mx * 40, h); ctx.stroke();
+    }
+    // কণা
+    for (const p of parts) {
+      p.y -= p.v * 16; if (p.y < -0.05) { p.y = 1.05; p.x = Math.random(); }
+      const px = p.x * w + mx * p.z * 36, py = p.y * h + my * p.z * 24, r = p.z * 2.1, a = (0.35 + 0.35 * Math.sin(t * 1.4 + p.p)) * p.z;
+      ctx.fillStyle = rgb(cols[(p.p * 10 | 0) % 3], light ? a * 0.6 : a);
+      ctx.beginPath(); ctx.arc(px, py, r, 0, 6.283); ctx.fill();
+      ctx.fillStyle = rgb(cols[(p.p * 10 | 0) % 3], 0.07 * p.z); ctx.beginPath(); ctx.arc(px, py, r * 5, 0, 6.283); ctx.fill();
+    }
+    ctx.globalCompositeOperation = 'source-over';
+  }
+  window.fxRefresh = readCols;
+  window.fxToggle = (v) => { on = v; cv.style.display = v ? '' : 'none'; };
+  let saved = 'on'; try { saved = localStorage.getItem('mch-fx') || 'on'; } catch { /* ignore */ }
+  if (saved === 'off') window.fxToggle(false);
+  if (reduce) { on = true; frame(1000); cancelAnimationFrame(raf); } else raf = requestAnimationFrame(frame);
+})();
 
 /* ---------- boot ---------- */
 $('#theme').onclick = () => { const l = document.documentElement.dataset.theme === 'light'; document.documentElement.dataset.theme = l ? 'dark' : 'light'; try { localStorage.setItem('mch-theme', l ? 'dark' : 'light'); } catch { /* ignore */ } buildNav(); };
@@ -884,9 +1191,11 @@ document.addEventListener('keydown', (e) => { if ((e.ctrlKey || e.metaKey) && e.
 async function start() {
   const me = await api('/me'); if (!me.ok) return showLogin();
   $('#login').classList.add('hide'); $('#app').classList.remove('hide'); buildNav(); await refresh(); render(true);
+  if (S && S.settings && S.settings.tzOffset == null) api('/settings', 'PUT', { tzOffset: -new Date().getTimezoneOffset() });
   clearInterval(window._poll); window._poll = setInterval(() => { if (!document.hidden) refresh(); }, 3000);
 }
-try { const t = localStorage.getItem('mch-theme'); if (t) document.documentElement.dataset.theme = t; } catch { /* ignore */ }
+try { const t = localStorage.getItem('mch-theme'); if (t) document.documentElement.dataset.theme = t; const ac = localStorage.getItem('mch-accent'); if (ac) document.documentElement.dataset.accent = ac; } catch { /* ignore */ }
+if (window.fxRefresh) window.fxRefresh();
 buildNav(); start();
 </script>
 </body>
