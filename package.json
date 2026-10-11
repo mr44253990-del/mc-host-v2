@@ -1,17 +1,24 @@
 {
   "name": "mc-host",
-  "version": "2.2.0",
-  "description": "Minecraft bot hosting panel with Telegram control and Mistral AI assistant (Wispbyte, Render or any Node host)",
+  "version": "3.0.0-beta",
+  "description": "Minecraft bot hosting panel with Telegram control, Mistral AI assistant, multi-file workers, and enhanced file management (Wispbyte, Render or any Node host)",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.js",
+    "dev": "nodemon index.js"
   },
   "engines": {
     "node": ">=18"
   },
   "dependencies": {
+    "archiver": "^6.0.1",
     "express": "^4.19.2",
+    "extract-zip": "^2.0.1",
     "mineflayer": "^4.23.0",
+    "multer": "^1.4.5-lts.1",
     "telegraf": "^4.16.3"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
   }
 }
