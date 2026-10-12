@@ -30,6 +30,25 @@ function build({ store, runner, workers, sys, tzMin = 0, extra = {} }) {
     if (a.today.req >= 20 && a.today.err / a.today.req >= 0.05) add('warn', `"${w.name}"-এ ত্রুটির হার ${(a.today.err / a.today.req * 100).toFixed(1)}%`, `আজ ${a.today.req} রিকোয়েস্টের ${a.today.err}টি 5xx। লগ ও AI বিশ্লেষণ দেখুন।`, go);
     if (lat.n >= 20 && lat.p95 > 1000) add('warn', `"${w.name}" ধীর`, `p95 লেটেন্সি ${lat.p95}ms। ভারী কাজ বা বাইরের API ধীর কিনা দেখুন।`, go);
     if (a.inv.tmo > 0) add('warn', `"${w.name}"-এ টাইমআউট`, `গত ৩০ দিনে ${a.inv.tmo}টি রিকোয়েস্ট ৩০ সেকেন্ডে শেষ হয়নি।`, go);
+    // পারফরম্যান্স বাজেট: সীমা পেরোলে সতর্কতা
+    const bu = w.budget || {};
+    if (bu.p95Ms && lat.n >= 20 && lat.p95 > bu.p95Ms) add('warn', `"${w.name}" বাজেট ছাড়িয়েছে (p95)`, `p95 ${lat.p95}ms, সীমা ${bu.p95Ms}ms।`, go);
+    const errNow = a.today.req ? a.today.err / a.today.req * 100 : 0;
+    if (bu.errPct && a.today.req >= 20 && errNow > bu.errPct) add('bad', `"${w.name}" ত্রুটির বাজেট ছাড়িয়েছে`, `আজ ${errNow.toFixed(1)}% ত্রুটি, সীমা ${bu.errPct}%।`, go);
+    // একই ত্রুটি বারবার: ৩ বার বা বেশি একই বার্তা
+    if (typeof workers.recent === 'function') {
+      const sig = {};
+      for (const r of workers.recent(w.id)) if (r.status >= 500 && r.err) { const k = r.err.slice(0, 80); sig[k] = (sig[k] || 0) + 1; }
+      const top = Object.entries(sig).sort((x, y) => y[1] - x[1])[0];
+      if (top && top[1] >= 3) add('warn', `"${w.name}"-এ একই ত্রুটি বারবার`, `"${top[0]}" — ${top[1]} বার। AI রিভিউ চালান বা লগ দেখুন।`, go);
+    }
+    // অস্বাভাবিক নীরবতা: আগে নিয়মিত ট্রাফিক ছিল, এখন গত ২ ঘণ্টায় একটিও নেই
+    const hourAvg = a.d7.req / 168;
+    const lastTwo = (a.hours || []).slice(-2).reduce((s, h) => s + h.req, 0);
+    if (v.state === 'running' && hourAvg >= 2 && lastTwo === 0) add('warn', `"${w.name}" হঠাৎ নীরব`, `গত ২ ঘণ্টায় কোনো রিকোয়েস্ট নেই, অথচ গড়ে ঘণ্টায় ${hourAvg.toFixed(1)}টি আসে। ক্লায়েন্ট বা DNS ঠিক আছে কিনা দেখুন।`, go);
+    // অস্বাভাবিক স্পাইক: শেষ ঘণ্টা স্বাভাবিকের ৫ গুণের বেশি (অন্তত ২০টি)
+    const lastH = (a.hours || []).slice(-1)[0];
+    if (lastH && lastH.req >= 20 && hourAvg > 0 && lastH.req > hourAvg * 5) add('info', `"${w.name}"-এ অস্বাভাবিক স্পাইক`, `শেষ ঘণ্টায় ${lastH.req}টি রিকোয়েস্ট, স্বাভাবিক গড় ${hourAvg.toFixed(1)}। বট/স্ক্যানার হতে পারে।`, go);
     const prev = (a.d7.req - a.today.req) / 6;
     if (a.today.req >= 50 && prev > 0 && a.today.req > prev * 3) add('info', `"${w.name}"-এ ট্রাফিক বেড়েছে`, `আজ ${a.today.req} রিকোয়েস্ট, আগের গড়ের ${(a.today.req / prev).toFixed(1)} গুণ।`, go);
     if (v.enabled && v.state === 'running' && a.d7.req === 0 && Date.now() - w.createdAt > 3 * 86400000) add('info', `"${w.name}" ৭ দিন ব্যবহার হয়নি`, 'দরকার না থাকলে বন্ধ করে রিসোর্স বাঁচান।', go);

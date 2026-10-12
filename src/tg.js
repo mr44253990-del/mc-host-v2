@@ -6,6 +6,7 @@ const Ai = require('./ai');
 const BOT_TEMPLATES = require('./templates');
 const WK_TEMPLATES = require('./worker-templates');
 const { unzip } = require('./zip');
+const Sec = require('./security');
 
 const B = Markup.button.callback;
 const KB = (rows) => Markup.inlineKeyboard(rows.filter((r) => r.length));
@@ -29,6 +30,7 @@ const WQUICK = [
   'একটি নতুন /health এন্ডপয়েন্ট এবং CORS সাপোর্ট যোগ করো।',
 ];
 
+const VIEW_OK = new Set(['noop', 'h', 'bl', 'wl', 'b', 'w', 'an', 'in', 'sys', 'l', 'gc', 'a', 'wlg', 'wa', 'wv', 'lv', 'lx', 'aih', 'se']);
 const SP = '▁▂▃▄▅▆▇█';
 const spark = (arr) => { const m = Math.max(1, ...arr); return arr.map((v) => (v <= 0 ? '▁' : SP[Math.min(7, Math.floor((v / m) * 7.99))])).join(''); };
 const bar = (n, len = 10) => { const f = Math.max(0, Math.min(len, Math.round((Number(n) || 0) / 100 * len))); return '▰'.repeat(f) + '▱'.repeat(len - f); };
@@ -40,7 +42,8 @@ const clip = (t, n = 3900) => (t.length > n ? t.slice(0, n - 20) + '\n…' : t);
 const avg = (o) => (o && o.req ? Math.round(o.ms / o.req) : 0);
 
 class Tg {
-  constructor(store, runner, ai, { maxBots, defaultScript, workers, sys, insights, getPwMode }) {
+  constructor(store, runner, ai, { maxBots, defaultScript, workers, sys, insights, getPwMode, getOwnerPw }) {
+    this.getOwnerPw = getOwnerPw || (() => '');
     this.store = store; this.runner = runner; this.ai = ai; this.workers = workers; this.sys = sys; this.insights = insights;
     this.maxBots = maxBots; this.defaultScript = defaultScript; this.getPwMode = getPwMode || (() => 'env');
     this.inst = new Map(); this.wiz = new Map(); this.chatMode = new Map(); this.live = new Map(); this.pendingDoc = new Map();
@@ -101,7 +104,9 @@ class Tg {
       if (!t.ownerId) {
         if (ctx.message && /^\/start/.test(ctx.message.text || '')) { t.ownerId = uid; this.store.save(); } else return;
       }
-      if (t.ownerId !== uid) { if (ctx.message) await ctx.reply('এই বট ব্যক্তিগত।').catch(() => {}); return; }
+      const mem = (t.members || []).find((m) => m.id === uid);
+      if (t.ownerId !== uid && !mem) { if (ctx.message) await ctx.reply('এই বট ব্যক্তিগত।').catch(() => {}); return; }
+      ctx.mcRole = t.ownerId === uid ? 'owner' : mem.role;
       return next();
     });
 
@@ -110,6 +115,31 @@ class Tg {
     bot.command('menu', menu);
     bot.command('cancel', menu);
     bot.command('help', (ctx) => ctx.reply(this.helpText(), { parse_mode: 'HTML' }));
+    // সদস্য ব্যবস্থাপনা (শুধু মালিক): /member add <id> viewer|operator, /member remove <id>, /member list
+    bot.command('member', async (ctx) => {
+      if (ctx.mcRole !== 'owner') return ctx.reply('শুধু মালিক এটি করতে পারেন।');
+      const [sub, idRaw, roleRaw] = ctx.message.text.split(/\s+/).slice(1);
+      t.members ||= [];
+      if (sub === 'list') return ctx.reply(t.members.map((m) => `${m.id} — ${m.role === 'viewer' ? 'শুধু দেখা' : 'অপারেটর'}`).join('\n') || 'কোনো সদস্য নেই');
+      const id = Number(idRaw);
+      if (!Number.isInteger(id) || id <= 0) return ctx.reply('ব্যবহার: /member add <টেলিগ্রাম আইডি> viewer|operator');
+      if (sub === 'add') {
+        if (id === t.ownerId) return ctx.reply('এটি মালিকের আইডি।');
+        const role = roleRaw === 'operator' ? 'operator' : 'viewer';
+        t.members = t.members.filter((m) => m.id !== id).concat([{ id, role, addedAt: Date.now() }]);
+        this.store.save(); return ctx.reply(`✅ ${id} যোগ হয়েছে (${role === 'viewer' ? 'শুধু দেখা' : 'অপারেটর'})`);
+      }
+      if (sub === 'remove') { t.members = t.members.filter((m) => m.id !== id); this.store.save(); return ctx.reply('✅ সরানো হয়েছে'); }
+      return ctx.reply('ব্যবহার: /member add|remove|list');
+    });
+    // ইনলাইন মোড: যেকোনো চ্যাটে @বটনাম টাইপ করে দ্রুত অবস্থা (BotFather-এ Inline mode চালু থাকতে হবে)
+    bot.on('inline_query', async (ctx) => {
+      const q = String(ctx.inlineQuery.query || '').toLowerCase();
+      const rows = [];
+      for (const b of this.store.data.bots) { const s = this.runner.snapshot(b.id); rows.push({ type: 'article', id: 'b' + b.id, title: `${DOT[s.state]} ${b.username}`, description: `${STATE_TAG[s.state]} · স্বাস্থ্য ${s.health}/100`, input_message_content: { message_text: `${DOT[s.state]} <b>${esc(b.username)}</b> — ${STATE_TAG[s.state]}, স্বাস্থ্য ${s.health}/100`, parse_mode: 'HTML' } }); }
+      for (const w of this.workers.all()) { const v = this.workers.view(w); const a = this.workers.agg([w.id], this.tzMin()); rows.push({ type: 'article', id: 'w' + w.id, title: `${WDOT[v.state] || '⚪'} ${w.name}`, description: `আজ ${nf(a.today.req)} রিকোয়েস্ট · ত্রুটি ${a.today.err}`, input_message_content: { message_text: `☁️ <b>${esc(w.name)}</b> — ${WSTATE[v.state] || v.state}\nআজ ${nf(a.today.req)} রিকোয়েস্ট, ত্রুটি ${a.today.err}`, parse_mode: 'HTML' } }); }
+      await ctx.answerInlineQuery(rows.filter((r) => !q || r.title.toLowerCase().includes(q) || r.description.toLowerCase().includes(q)).slice(0, 40), { cache_time: 10 }).catch(() => {});
+    });
     bot.command('bots', (ctx) => this.show(ctx, this.vBots(0)));
     bot.command('workers', (ctx) => this.show(ctx, this.vWorkers(0)));
     bot.command('stats', (ctx) => this.show(ctx, this.vAnalytics()));
@@ -441,6 +471,7 @@ class Tg {
       [B('🗞 রিপোর্ট:', 'noop'), ...[-1, 8, 12, 20].map((h) => B(h === dg ? `✅ ${h < 0 ? 'বন্ধ' : h + 'টা'}` : (h < 0 ? 'বন্ধ' : h + 'টা'), `sg:${h}`))],
       [B('🕐 টাইমজোন:', 'noop'), ...[0, 180, 330, 360, 480].map((m) => B(m === tz ? `✅ ${tzs(m)}` : tzs(m), `stz:${m}`))],
       [B('🤖 AI মডেল', 'smd'), B('🔑 AI key দিন', 'sk')],
+      [B('🔐 অ্যাক্সেস (টোকেন/ব্যবহারকারী)', 'ac')],
       [B('💾 ব্যাকআপ পাঠান', 'bk'), B('🖥 সিস্টেম', 'sys')], [B('« হোম', 'h')]]) };
   }
 
@@ -492,6 +523,7 @@ class Tg {
   async route(ctx, t, data) {
     const uid = ctx.from.id;
     const [k, id, extra, x4] = data.split(':');
+    if (ctx.mcRole === 'viewer' && !VIEW_OK.has(k)) return this.show(ctx, { text: '👁 আপনার শুধু দেখার অনুমতি আছে।', kb: KB([[B('🏠 হোম', 'h')]]) });
     const bot = id ? this.store.bot(id) : null;
     const wk = id ? this.workers.get(id) : null;
     const isW = /^w/.test(k) && !['wl', 'wn', 'wnt', 'wnu'].includes(k);
@@ -667,8 +699,45 @@ class Tg {
 
       // ---------- ফাইল পাঠানো হলে কোথায় রাখব ----------
       case 'pd': return this.applyPendingDoc(ctx, uid, id, extra);
+      case 'ac': this.wiz.delete(uid); return S(this.vAccess());
+      case 'tkn': this.wiz.set(uid, { step: 'tkname' }); return S({ text: '🔐 <b>নতুন API টোকেন</b>\nটোকেনের নাম লিখুন (কোথায় ব্যবহার হবে, যেমন ci-deploy)', kb: KB([[B('❌ বাতিল', 'ac')]]) });
+      case 'tks': { const w = this.wiz.get(uid); if (!w || w.step !== 'tkscope') return S(this.vAccess()); this.wiz.delete(uid); try { const tok = this.tgTokenCreate(w.name, id === 'control' ? 'control' : 'read'); return ctx.reply(`✅ টোকেন তৈরি হয়েছে। <b>এটি এখনই একবার দেখানো হচ্ছে</b>, কপি করে রাখুন:\n<code>${esc(tok)}</code>\n\n<i>বার্তাটি ব্যক্তিগত চ্যাটে থাকে, চাইলে মুছে দিন।</i>`, { parse_mode: 'HTML', ...KB([[B('🔐 অ্যাক্সেস', 'ac')]]) }); } catch (e) { return ctx.reply('⚠️ ' + esc(e.message), { parse_mode: 'HTML' }); } }
+      case 'tkx': { const x = (this.store.data.tokens || []).find((y) => y.id === id); if (!x) return S(this.vAccess()); return S({ text: `🗑 টোকেন <b>${esc(x.name)}</b> বাতিল হবে? সাথে সাথে কাজ বন্ধ হবে।`, kb: KB([[B('✅ হ্যাঁ, বাতিল', 'tkr:' + id), B('না', 'ac')]]) }); }
+      case 'tkr': this.store.data.tokens = (this.store.data.tokens || []).filter((y) => y.id !== id); this.store.save(); return S(this.vAccess());
+      case 'usn': this.wiz.set(uid, { step: 'usname' }); return S({ text: '👤 <b>নতুন ব্যবহারকারী</b>\nনাম লিখুন', kb: KB([[B('❌ বাতিল', 'ac')]]) });
+      case 'usr': { const w = this.wiz.get(uid); if (!w || w.step !== 'usrole') return S(this.vAccess()); this.wiz.delete(uid); try { this.tgUserCreate(w.name, w.pw, id === 'viewer' ? 'viewer' : 'operator'); return S(this.vAccess()); } catch (e) { return ctx.reply('⚠️ ' + esc(e.message), { parse_mode: 'HTML' }); } }
+      case 'usx': { const x = (this.store.data.users || []).find((y) => y.id === id); if (!x) return S(this.vAccess()); return S({ text: `🗑 <b>${esc(x.name)}</b> সরানো হবে? তার সেশনও বাতিল হবে।`, kb: KB([[B('✅ হ্যাঁ, সরান', 'usr_:' + id), B('না', 'ac')]]) }); }
+      case 'usr_': this.store.data.users = (this.store.data.users || []).filter((y) => y.id !== id); this.store.save(); return S(this.vAccess());
       default: return S(this.vHome());
     }
+  }
+
+
+  // ---------- অ্যাক্সেস ব্যবস্থাপনা (শুধু মালিক) ----------
+  vAccess() {
+    const tk = this.store.data.tokens || []; const us = this.store.data.users || [];
+    const RL = { operator: 'অপারেটর', viewer: 'শুধু দেখা' };
+    const when = (x) => (x ? new Date(x).toLocaleDateString('bn-BD') : 'কখনো না');
+    const text = `🔐 <b>অ্যাক্সেস</b>\n${LINE}\n<b>API টোকেন</b> (${tk.length}/20)\n${tk.map((x) => `• ${esc(x.name)} — ${x.scope === 'control' ? 'নিয়ন্ত্রণ' : 'শুধু পড়া'} · শেষ ${when(x.lastUsed)}`).join('\n') || '<i>নেই</i>'}\n\n<b>ব্যবহারকারী</b> (${us.length}/20)\n${us.map((x) => `• ${esc(x.name)} — ${RL[x.role] || x.role} · লগইন ${when(x.lastLogin)}`).join('\n') || '<i>শুধু মালিক</i>'}`;
+    const rows = [[B('➕ টোকেন তৈরি', 'tkn')], ...tk.slice(0, 8).map((x) => [B(`🗑 টোকেন: ${x.name.slice(0, 20)}`, 'tkx:' + x.id)]), [B('👤 ব্যবহারকারী যোগ', 'usn')], ...us.slice(0, 8).map((x) => [B(`🗑 ${x.name.slice(0, 20)}`, 'usx:' + x.id)]), [B('« সেটিংস', 'se')]];
+    return { text, kb: KB(rows) };
+  }
+
+  tgTokenCreate(name, scope) {
+    if ((this.store.data.tokens || []).length >= 20) throw new Error('সর্বোচ্চ ২০টি টোকেন');
+    const token = Sec.newToken();
+    (this.store.data.tokens ||= []).push({ id: genId(), name: name.slice(0, 40), scope, hash: Sec.sha256(token), createdAt: Date.now(), lastUsed: 0 });
+    this.store.save();
+    return token;
+  }
+
+  tgUserCreate(name, pw, role) {
+    if (pw.length < 6) throw new Error('পাসওয়ার্ড কমপক্ষে ৬ অক্ষর');
+    if (Sec.safeEq(pw, this.store.setting('customPassword') || this.getOwnerPw())) throw new Error('এটি মালিকের পাসওয়ার্ড, আলাদা দিন');
+    if ((this.store.data.users || []).some((u) => Sec.verifyPw(pw, u.hash))) throw new Error('এই পাসওয়ার্ড অন্য কেউ ব্যবহার করছে');
+    if ((this.store.data.users || []).length >= 20) throw new Error('সর্বোচ্চ ২০ জন ব্যবহারকারী');
+    (this.store.data.users ||= []).push({ id: genId(), name: name.slice(0, 30), role, hash: Sec.hashPw(pw), createdAt: Date.now() });
+    this.store.save();
   }
 
   buildBackup() {
@@ -679,6 +748,7 @@ class Tg {
   }
 
   async quickCmd(ctx, cmd) {
+    if (ctx.mcRole === 'viewer' && cmd !== 'logs') return ctx.reply('👁 শুধু দেখার অনুমতি আছে।');
     const args = ctx.message.text.split(/\s+/).slice(1); const q = args[0];
     if (!q) return ctx.reply(`ব্যবহার: /${cmd} <নাম>${cmd === 'say' ? ' <মেসেজ>' : ''}`);
     const b = this.findBot(q); const w = b ? null : this.findWorker(q);
@@ -831,6 +901,9 @@ class Tg {
         e.value = text.slice(0, 4096); this.store.save(); if (wk.enabled) await this.workers.start(wk.id);
         return done(this.vWEnvItem(w.id, w.idx));
       }
+      case 'tkname': { const name = text.trim().slice(0, 40); if (!name) return ctx.reply('নাম লিখুন।'); this.wiz.set(uid, { step: 'tkscope', name }); return ctx.reply(`<b>${esc(name)}</b> — অনুমতি বাছুন:`, { parse_mode: 'HTML', ...KB([[B('📖 শুধু পড়া', 'tks:read'), B('🛠 নিয়ন্ত্রণ', 'tks:control')], [B('❌ বাতিল', 'ac')]]) }); }
+      case 'usname': { const name = text.trim().slice(0, 30); if (!name) return ctx.reply('নাম লিখুন।'); this.wiz.set(uid, { step: 'uspw', name }); return ctx.reply('পাসওয়ার্ড লিখুন (কমপক্ষে ৬ অক্ষর)। <i>মেসেজটি মুছে দেব।</i>', { parse_mode: 'HTML' }); }
+      case 'uspw': { await wipe(); if (text.length < 6) return ctx.reply('পাসওয়ার্ড কমপক্ষে ৬ অক্ষর। আবার লিখুন।'); this.wiz.set(uid, { step: 'usrole', name: w.name, pw: text }); return ctx.reply(`<b>${esc(w.name)}</b> — ভূমিকা বাছুন:`, { parse_mode: 'HTML', ...KB([[B('🛠 অপারেটর', 'usr:operator'), B('👁 শুধু দেখা', 'usr:viewer')], [B('❌ বাতিল', 'ac')]]) }); }
       case 'apikey': await wipe(); this.store.setSetting('mistralKey', text.trim()); await ctx.reply('✅ AI key সেভ হয়েছে।'); return done(this.vSettings());
       case 'wup': return ctx.reply('ফাইল বা .zip পাঠান (টেক্সট নয়)। শেষ হলে নিচের ✅ বোতাম চাপুন।');
       case 'wnewup': return ctx.reply('worker.js বা .zip ফাইল পাঠান।');

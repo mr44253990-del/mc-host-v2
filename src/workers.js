@@ -35,6 +35,23 @@ function uaGroup(ua) {
   return 'অন্যান্য';
 }
 
+// সরল LCS লাইন-ডিফ; বড় ফাইলে আনুমানিক গণনা (পারফরম্যান্স রক্ষা)
+function lineDiff(a, b) {
+  const n = a.length, m = b.length;
+  if (n * m > 2500000) return { add: Math.max(0, m - n), del: Math.max(0, n - m), lines: [{ t: '~', s: 'ফাইল খুব বড়, বিস্তারিত দেখানো হচ্ছে না' }] };
+  const W = m + 1; const dp = new Uint32Array((n + 1) * W);
+  for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--) dp[i * W + j] = a[i] === b[j] ? dp[(i + 1) * W + j + 1] + 1 : Math.max(dp[(i + 1) * W + j], dp[i * W + j + 1]);
+  const lines = []; let i = 0, j = 0, add = 0, del = 0;
+  while (i < n && j < m) {
+    if (a[i] === b[j]) { lines.push({ t: ' ', s: a[i] }); i++; j++; }
+    else if (dp[(i + 1) * W + j] >= dp[i * W + j + 1]) { lines.push({ t: '-', s: a[i] }); del++; i++; }
+    else { lines.push({ t: '+', s: b[j] }); add++; j++; }
+  }
+  while (i < n) { lines.push({ t: '-', s: a[i++] }); del++; }
+  while (j < m) { lines.push({ t: '+', s: b[j++] }); add++; }
+  return { add, del, lines };
+}
+
 class Workers extends EventEmitter {
   constructor(store, { max = 10 } = {}) {
     super();
@@ -42,7 +59,7 @@ class Workers extends EventEmitter {
     this.dir = path.join(store.dir, 'workers');
     fs.mkdirSync(this.dir, { recursive: true });
     store.data.workers ||= [];
-    this.rt = new Map(); this._n = 0; this._rl = new Map(); this.origin = 'http://localhost';
+    this.rt = new Map(); this._n = 0; this._gen = 0; this._rl = new Map(); this.origin = 'http://localhost';
     this._migrate();
     store.hooks = { export: () => this.exportAll() };
     if (store.pendingWorkerFiles) { this.importAll(store.pendingWorkerFiles); store.pendingWorkerFiles = null; }
@@ -57,6 +74,7 @@ class Workers extends EventEmitter {
   verDir(id) { return path.join(this.dir, id + '.v'); }
   kvFile(id) { return path.join(this.dir, id + '.kv.json'); }
   statsFile(id) { return path.join(this.dir, id + '.stats.json'); }
+  dbFile(id) { return path.join(this.dir, id + '.db'); }
 
   _migrate() {
     for (const w of this.all()) {
@@ -229,7 +247,7 @@ class Workers extends EventEmitter {
   view(w) {
     const rt = this._rt(w.id);
     if (!rt.fc || Date.now() - rt.fc.t > 10000) { const fl = this.listFiles(w.id); rt.fc = { t: Date.now(), count: fl.length, size: fl.reduce((s, f) => s + f.size, 0) }; }
-    return { id: w.id, name: w.name, slug: w.slug, enabled: !!w.enabled, cronMin: w.cronMin || 0, rateLimit: w.rateLimit || 0, entry: this.entryOf(w) || w.entry || 'worker.js', envCount: (w.env || []).length, fileCount: rt.fc.count, totalSize: rt.fc.size, createdAt: w.createdAt, updatedAt: w.updatedAt, state: rt.state, error: rt.error, startedAt: rt.startedAt, inflight: rt.inflight, versions: this.versions(w.id).length, kvKeys: rt.kvKeys };
+    return { id: w.id, name: w.name, slug: w.slug, domain: w.domain || '', enabled: !!w.enabled, cronMin: w.cronMin || 0, rateLimit: w.rateLimit || 0, entry: this.entryOf(w) || w.entry || 'worker.js', envCount: (w.env || []).length, fileCount: rt.fc.count, totalSize: rt.fc.size, createdAt: w.createdAt, updatedAt: w.updatedAt, state: rt.state, error: rt.error, startedAt: rt.startedAt, inflight: rt.inflight, versions: this.versions(w.id).length, kvKeys: rt.kvKeys };
   }
 
   cleanEnv(list, old = []) {
@@ -301,7 +319,7 @@ class Workers extends EventEmitter {
   async remove(id) {
     await this.stop(id, { keep: true });
     this.store.data.workers = this.all().filter((w) => w.id !== id);
-    for (const f of [this.dirOf(id), this.verDir(id), this.kvFile(id), this.statsFile(id)]) fs.rmSync(f, { recursive: true, force: true });
+    for (const f of [this.dirOf(id), this.verDir(id), this.kvFile(id), this.statsFile(id), this.dbFile(id), this.dbFile(id) + '-wal', this.dbFile(id) + '-shm']) fs.rmSync(f, { recursive: true, force: true });
     this.rt.delete(id);
     this.store.save();
   }
@@ -314,8 +332,8 @@ class Workers extends EventEmitter {
     const entry = this.entryOf(w);
     if (!entry) { this._fail(rt, w, 'এন্ট্রি ফাইল নেই। worker.js (বা index.js) তৈরি করুন।', false); return; }
     this._ensureType(w, entry);
-    const cfg = { file: path.join(this.dirOf(w.id), entry), dir: this.dirOf(w.id), kv: this.kvFile(w.id), name: w.name, slug: w.slug, env: Object.fromEntries((w.env || []).map((e) => [e.key, e.value])) };
-    const proc = spawn(process.execPath, [`--max-old-space-size=${HEAP}`, HOST], { cwd: this.dirOf(w.id), env: { PATH: process.env.PATH, NODE_ENV: 'production', WK_CONFIG: JSON.stringify(cfg) }, stdio: ['ignore', 'pipe', 'pipe', 'ipc'] });
+    const cfg = { file: path.join(this.dirOf(w.id), entry), dir: this.dirOf(w.id), kv: this.kvFile(w.id), db: this.dbFile(w.id), name: w.name, slug: w.slug, env: Object.fromEntries((w.env || []).map((e) => [e.key, e.value])) };
+    const proc = spawn(process.execPath, [`--max-old-space-size=${HEAP}`, '--disable-warning=ExperimentalWarning', HOST], { cwd: this.dirOf(w.id), env: { PATH: process.env.PATH, NODE_ENV: 'production', WK_CONFIG: JSON.stringify(cfg) }, stdio: ['ignore', 'pipe', 'pipe', 'ipc'] });
     rt.proc = proc;
     this._pipe(proc.stdout, rt, false); this._pipe(proc.stderr, rt, true);
     clearTimeout(rt.timer);
@@ -394,8 +412,14 @@ class Workers extends EventEmitter {
   async deploy(id) {
     const w = this.get(id); if (!w) return { ok: false, error: 'Worker নেই' };
     w.enabled = true; w.updatedAt = Date.now(); this.store.save();
-    const r = await this._startWait(w);
-    if (r.ok) { this.snapshot(id, 'ok'); return r; }
+    const pre = this.check(id);
+    // ডিপ্লয়ের আগে যাচাই: ভুল থাকলে প্রসেস শুরুই হবে না (দ্রুত ও নিরাপদ)
+    let r = pre.ok ? await this._startWait(w) : { ok: false, error: 'ডিপ্লয়ের আগের যাচাই ব্যর্থ:\n' + pre.errors.join('\n'), precheck: true };
+    if (r.ok && w.strictTests) {
+      const t = await this.runTests(id);
+      if (t.total && !t.ok) r = { ok: false, error: `টেস্ট ব্যর্থ (${t.failed}/${t.total}):\n` + t.results.filter((x) => !x.pass).slice(0, 5).map((x) => `${x.name}: ${x.reason}`).join('\n') };
+    }
+    if (r.ok) { this.snapshot(id, 'ok'); return { ...r, warnings: pre.warnings }; }
     const good = this.versions(id).find((v) => v.label === 'ok');
     if (good) {
       this.snapshot(id, 'failed');
@@ -482,7 +506,7 @@ class Workers extends EventEmitter {
     for (let i = 0; i < 50 && rt.state === 'starting'; i++) await new Promise((r) => setTimeout(r, 100));
     if (rt.state !== 'running' || !rt.proc) return done(plain(503, 'Worker unavailable'), 'unavail', rt.error);
     if (!skipLimit && this._limited(w, ip)) { const o = plain(429, 'Rate limit exceeded'); o.headers.push(['retry-after', '60']); return done(o, 'limited'); }
-    if (rt.inflight >= 100) return plain(429, 'Too many requests');
+    if (rt.inflight >= (w.concurrency || 50)) return plain(429, 'Too many requests (concurrency সীমা)');
     rt.inflight++;
     try {
       const out = await this._call(rt, { method, url, headers, body });
@@ -552,7 +576,7 @@ class Workers extends EventEmitter {
     const e = (st.p[key] ||= [0, 0, 0]); e[0]++; if (status >= 500) e[1]++; e[2] += Math.round(ms);
     const keys = Object.keys(st.p);
     if (keys.length > 100) { let min = keys[0]; for (const x of keys) if (st.p[x][0] < st.p[min][0]) min = x; if (min !== key) delete st.p[min]; }
-    rt.dirty = true;
+    rt.dirty = true; this._gen = (this._gen || 0) + 1;
     rt.lat.push(ms); if (rt.lat.length > 300) rt.lat.shift();
     rt.win.push({ t: Date.now(), err: status >= 500 });
     rt.recent.push({ t: Date.now(), method, path: String(p || '/').slice(0, 120), status, ms, err: err ? err.split('\n')[0].slice(0, 120) : '' });
@@ -589,9 +613,165 @@ class Workers extends EventEmitter {
     return [head, ...rows].join('\n') + '\n';
   }
 
+
+  // SQLite স্ন্যাপশট: VACUUM INTO দিয়ে WAL-সহ সুসংগত কপি (Worker চলাকালীনও নিরাপদ)
+  dbSnapshot(id) {
+    const f = this.dbFile(id);
+    if (!fs.existsSync(f)) return null;
+    let sqlite = null; try { sqlite = require('node:sqlite'); } catch { return null; }
+    const tmp = path.join(os.tmpdir(), `dbsnap-${genId()}.db`);
+    const db = new sqlite.DatabaseSync(f);
+    try { db.exec(`VACUUM INTO '${tmp.replace(/'/g, "''")}'`); return fs.readFileSync(tmp); }
+    finally { try { db.close(); } catch { /* ignore */ } fs.rmSync(tmp, { force: true }); }
+  }
+  dbRestore(id, buf) {
+    const f = this.dbFile(id);
+    fs.rmSync(f + '-wal', { force: true }); fs.rmSync(f + '-shm', { force: true });
+    fs.writeFileSync(f, buf);
+  }
+  dbExportAll() {
+    const out = {};
+    for (const w of this.all()) { const b = this.dbSnapshot(w.id); if (b) out[w.id] = b.toString('base64'); }
+    return out;
+  }
+  dbImportAll(map) {
+    for (const [id, b64] of Object.entries(map || {})) { if (this.get(id)) { try { this.dbRestore(id, Buffer.from(b64, 'base64')); } catch { /* skip */ } } }
+  }
+
+  // ---------- ডিপ্লয়-পূর্ব যাচাই ----------
+  check(id) {
+    const w = this.get(id); const errors = []; const warnings = [];
+    const files = this.listFiles(id).map((f) => f.path); const set = new Set(files);
+    const entry = this.entryOf(w);
+    if (!entry) errors.push('এন্ট্রি ফাইল নেই (worker.js বা index.js লাগবে)');
+    const envKeys = new Set((w.env || []).map((e) => e.key));
+    const used = new Map();
+    const IMP = /(?:import\s[^'"]*?from\s*|export\s[^'"]*?from\s*|import\s*\(\s*|require\(\s*)(['"])(\.{1,2}\/[^'"]+)\1/g;
+    const BARE = /(?:import\s[^'"]*?from\s*|import\s*\(\s*|require\(\s*)(['"])([^'"./][^'"]*)\1/g;
+    const builtins = new Set(require('module').builtinModules.map((m) => m.replace(/^node:/, '')));
+    for (const rel of files.filter((f) => /\.(m?js|cjs)$/.test(f))) {
+      const content = fs.readFileSync(path.join(this.dirOf(id), rel), 'utf8');
+      const se = this.syntaxCheck(rel, content);
+      if (se) errors.push(`${rel}: সিনট্যাক্স ত্রুটি — ${se.split('\n')[0]}`);
+      let m;
+      IMP.lastIndex = 0;
+      while ((m = IMP.exec(content))) {
+        const target = path.posix.normalize(path.posix.join(path.posix.dirname(rel), m[2]));
+        const cands = [target, target + '.js', target + '.mjs', target + '.cjs', target + '/index.js'];
+        if (!cands.some((c) => set.has(c))) errors.push(`${rel}: "${m[2]}" ইমপোর্ট হচ্ছে কিন্তু ফাইলটি নেই`);
+      }
+      BARE.lastIndex = 0;
+      while ((m = BARE.exec(content))) {
+        const pkg = m[2].replace(/^node:/, '').split('/')[0];
+        if (!builtins.has(pkg) && !fs.existsSync(path.join(this.dirOf(id), 'node_modules', pkg))) warnings.push(`${rel}: প্যাকেজ "${m[2]}" node_modules-এ নেই, চলবে না`);
+      }
+      const ENVU = /\b(?:process\.env|env)\.([A-Za-z_][A-Za-z0-9_]*)/g;
+      while ((m = ENVU.exec(content))) used.set(m[1], rel);
+    }
+    const dotenvKeys = new Set();
+    for (const f of ['.env', '.dev.vars']) { if (set.has(f)) { try { for (const l of fs.readFileSync(path.join(this.dirOf(id), f), 'utf8').split('\n')) { const mm = l.match(/^\s*(?:export\s+)?([A-Za-z_]\w*)\s*=/); if (mm) dotenvKeys.add(mm[1]); } } catch { /* ignore */ } } }
+    for (const [k, rel] of used) if (!envKeys.has(k) && !dotenvKeys.has(k) && !['KV', 'ASSETS', 'DB'].includes(k)) warnings.push(`${rel}: ENV "${k}" ব্যবহার হচ্ছে কিন্তু সেট নেই`);
+    return { ok: errors.length === 0, errors, warnings, entry, files: files.length };
+  }
+
+  // ---------- টেস্ট স্যুট (tests.json) ----------
+  // ফরম্যাট: [{ "name":"home", "method":"GET", "path":"/", "body":"...", "expect":{ "status":200, "includes":"text" } }]
+  async runTests(id) {
+    const w = this.get(id); const f = path.join(this.dirOf(id), 'tests.json');
+    if (!fs.existsSync(f)) return { ok: true, total: 0, failed: 0, results: [], note: 'tests.json নেই' };
+    let cases; try { cases = JSON.parse(fs.readFileSync(f, 'utf8')); } catch (e) { return { ok: false, total: 1, failed: 1, results: [{ name: 'tests.json', pass: false, reason: 'JSON সঠিক নয়: ' + e.message }] }; }
+    if (!Array.isArray(cases)) return { ok: false, total: 1, failed: 1, results: [{ name: 'tests.json', pass: false, reason: 'অ্যারে হতে হবে' }] };
+    const results = [];
+    for (const c of cases.slice(0, 100)) {
+      const name = String(c.name || c.path || 'test').slice(0, 80);
+      let out;
+      try { out = await this.invoke(id, { method: String(c.method || 'GET').toUpperCase(), path: String(c.path || '/'), headers: c.headers || {}, body: c.body == null ? null : (typeof c.body === 'string' ? c.body : JSON.stringify(c.body)) }); }
+      catch (e) { results.push({ name, pass: false, reason: e.message }); continue; }
+      const text = out.body.toString('utf8'); const exp = c.expect || {}; const reasons = [];
+      if (exp.status !== undefined && out.status !== Number(exp.status)) reasons.push(`স্ট্যাটাস ${out.status}, চেয়েছিলাম ${exp.status}`);
+      if (exp.includes && !text.includes(String(exp.includes))) reasons.push(`উত্তরে "${String(exp.includes).slice(0, 40)}" নেই`);
+      if (exp.maxMs !== undefined && out.ms > Number(exp.maxMs)) reasons.push(`${out.ms}ms, সীমা ${exp.maxMs}ms`);
+      if (exp.status === undefined && exp.includes === undefined && exp.maxMs === undefined && out.status >= 500) reasons.push('সার্ভার ত্রুটি ' + out.status);
+      results.push({ name, pass: reasons.length === 0, reason: reasons.join('; ') || 'ঠিক আছে', status: out.status, ms: out.ms });
+    }
+    const failed = results.filter((x) => !x.pass).length;
+    w.lastTests = { t: Date.now(), total: results.length, failed }; this.store.save();
+    return { ok: failed === 0, total: results.length, failed, results };
+  }
+
+  // ---------- ডাটাবেস (শুধু পড়া) ----------
+  openDbRO(id) {
+    const f = this.dbFile(id); if (!fs.existsSync(f)) return null;
+    const sqlite = require('node:sqlite');
+    return new sqlite.DatabaseSync(f, { readOnly: true });
+  }
+  dbTables(id) {
+    const db = this.openDbRO(id); if (!db) return { exists: false, tables: [] };
+    try {
+      const names = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all().map((r) => r.name);
+      return { exists: true, tables: names.map((n) => ({ name: n, rows: db.prepare(`SELECT COUNT(*) AS n FROM "${n.replace(/"/g, '""')}"`).get().n })) };
+    } finally { db.close(); }
+  }
+  dbRows(id, table, limit = 50, offset = 0) {
+    const t = this.dbTables(id).tables.find((x) => x.name === table);
+    if (!t) throw new Error('টেবিল পাওয়া যায়নি');
+    const db = this.openDbRO(id);
+    try {
+      const lim = Math.max(1, Math.min(200, Number(limit) || 50)), off = Math.max(0, Number(offset) || 0);
+      const rows = db.prepare(`SELECT * FROM "${table.replace(/"/g, '""')}" LIMIT ? OFFSET ?`).all(lim, off);
+      return { table, total: t.rows, columns: rows[0] ? Object.keys(rows[0]) : [], rows, limit: lim, offset: off };
+    } finally { db.close(); }
+  }
+  dbQuery(id, sql) {
+    const s = String(sql || '').trim().replace(/;\s*$/, '');
+    if (!/^select\s/i.test(s) || s.includes(';')) throw new Error('শুধু একটি SELECT কোয়েরি চলবে');
+    if (/\b(attach|pragma|insert|update|delete|drop|alter|create|replace)\b/i.test(s)) throw new Error('এই কোয়েরি অনুমোদিত নয়');
+    const db = this.openDbRO(id); if (!db) throw new Error('ডাটাবেস নেই');
+    try { const rows = db.prepare(s).all(); return { rows: rows.slice(0, 200), total: rows.length, columns: rows[0] ? Object.keys(rows[0]) : [] }; }
+    finally { db.close(); }
+  }
+
+  // ---------- ভার্সন তুলনা ----------
+  diffVersion(id, name, file) {
+    if (!/^\d+_(ok|failed|manual)$/.test(name)) throw new Error('ভার্সন সঠিক নয়');
+    const vdir = path.join(this.verDir(id), name);
+    if (!fs.existsSync(vdir)) throw new Error('ভার্সন পাওয়া যায়নি');
+    const cdir = this.dirOf(id);
+    const cur = new Map(this._walk(cdir).map((f) => [f.path, f]));
+    const old = new Map(this._walk(vdir).map((f) => [f.path, f]));
+    const paths = [...new Set([...cur.keys(), ...old.keys()])].sort();
+    const out = [];
+    for (const p of paths) {
+      const a = old.has(p) ? fs.readFileSync(path.join(vdir, p)) : null;
+      const b = cur.has(p) ? fs.readFileSync(path.join(cdir, p)) : null;
+      let st = 'same';
+      if (!a) st = 'added'; else if (!b) st = 'removed'; else if (!a.equals(b)) st = 'changed';
+      if (st === 'same') continue;
+      const e = { path: p, status: st, size: (b || a).length, add: 0, del: 0, binary: false };
+      const text = !(a || b || Buffer.alloc(0)).subarray(0, 4096).includes(0);
+      if (!text) e.binary = true;
+      else {
+        const d = lineDiff(((a || Buffer.alloc(0)).toString('utf8')).split('\n'), ((b || Buffer.alloc(0)).toString('utf8')).split('\n'));
+        e.add = d.add; e.del = d.del;
+        if (file === p) e.lines = d.lines.slice(0, 800);
+      }
+      out.push(e);
+    }
+    return { name, ts: Number(name.split('_')[0]), files: out, file: file || null, note: 'ভার্সন → বর্তমান (+ নতুন, − বাদ)' };
+  }
+
   totalRequests() { let n = 0; for (const w of this.all()) n += this.stats(w.id).t; return n; }
 
   agg(ids, tzMin = 0) {
+    const key = ids.join(',') + '|' + tzMin + '|' + this._gen + '|' + Math.floor(Date.now() / 60000);
+    this._aggCache ||= new Map();
+    if (this._aggCache.has(key)) return this._aggCache.get(key);
+    const out = this._aggRaw(ids, tzMin);
+    this._aggCache.set(key, out);
+    if (this._aggCache.size > 40) this._aggCache.delete(this._aggCache.keys().next().value);
+    return out;
+  }
+  _aggRaw(ids, tzMin = 0) {
     const off = -Number(tzMin || 0) * 60000, hr = 3600000, day = 86400000, now = Date.now();
     const dayStart = Math.floor((now + off) / day) * day - off;
     const hourStart = Math.floor((now + off) / hr) * hr - off;

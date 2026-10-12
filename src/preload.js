@@ -72,7 +72,9 @@ function features(bot) {
       try { m = r.regex ? text.match(new RegExp(r.match, 'i')) : (text.toLowerCase().includes(String(r.match).toLowerCase()) ? [] : null); } catch { m = null; }
       if (!m || now - (cd.get(i) || 0) < (r.cooldown || 10) * 1000) return false;
       cd.set(i, now);
-      say(String(r.reply).replace(/\{bot\}/g, bot.username).replace(/\$(\d)/g, (_, n) => (m && m[n]) || ''));
+      const rep = String(r.reply).replace(/\{bot\}/g, bot.username).replace(/\$(\d)/g, (_, n) => (m && m[n]) || '');
+      if (/^relay:/i.test(rep)) { const [to, ...rest] = rep.slice(6).split('|'); send({ t: 'relay', to: to.trim(), text: rest.join('|').trim() }); }
+      else say(rep);
       return true;
     });
   });

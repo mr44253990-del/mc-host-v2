@@ -107,18 +107,21 @@ class Ai {
   }
 
   // ---------- chat with memory ----------
-  async chat(botId, text) {
+  async chat(botId, text, clientHistory) {
     const mem = botId ? this.store.mem(botId) : this.store.mem('_fleet');
-    const history = mem.chat.slice(-12);
+    const local = Array.isArray(clientHistory); // ব্রাউজারে সংরক্ষিত ইতিহাস: সার্ভারে কিছু জমা হয় না
+    const history = local ? Ai.cleanHist(clientHistory) : mem.chat.slice(-12);
     const messages = [
       { role: 'system', content: SYSTEM + '\n\n' + this.context(botId) },
       ...history,
       { role: 'user', content: String(text).slice(0, 4000) },
     ];
     const reply = await this.complete(messages);
-    mem.chat.push({ role: 'user', content: String(text).slice(0, 1500) }, { role: 'assistant', content: reply.replace(/```[\s\S]*?```/g, '[code]').slice(0, 1500) });
-    if (mem.chat.length > 30) await this._compact(mem).catch(() => {});
-    this.store.save();
+    if (!local) {
+      mem.chat.push({ role: 'user', content: String(text).slice(0, 1500) }, { role: 'assistant', content: reply.replace(/```[\s\S]*?```/g, '[code]').slice(0, 1500) });
+      if (mem.chat.length > 30) await this._compact(mem).catch(() => {});
+      this.store.save();
+    }
 
     let code = Ai.extractCode(reply);
     let error = null;
@@ -203,11 +206,14 @@ Ai.parseFiles = function (text) {
   return out;
 };
 
-Ai.prototype.chatWorker = async function (workers, w, text) {
+Ai.cleanHist = (arr) => arr.slice(-12).filter((m) => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string').map((m) => ({ role: m.role, content: m.content.slice(0, 1500) }));
+
+Ai.prototype.chatWorker = async function (workers, w, text, clientHistory) {
   const mem = this.store.mem('w:' + w.id);
+  const local = Array.isArray(clientHistory);
   const messages = [
     { role: 'system', content: SYSTEM_W + '\n\n' + this.workerContext(workers, w) },
-    ...mem.chat.slice(-10),
+    ...(local ? Ai.cleanHist(clientHistory).slice(-10) : mem.chat.slice(-10)),
     { role: 'user', content: String(text).slice(0, 4000) },
   ];
   const reply = await this.complete(messages, { max_tokens: 6000 });
@@ -219,9 +225,11 @@ Ai.prototype.chatWorker = async function (workers, w, text) {
     changes.push({ path: p, content: b.content, isNew: !existing.has(p), error: workers.syntaxCheck(p, b.content), size: Buffer.byteLength(b.content) });
   }
   const shown = reply.replace(/```file:([^\n`]+)\n[\s\S]*?```/g, (_, p) => `[ফাইল: ${p.trim()}]`);
-  mem.chat.push({ role: 'user', content: String(text).slice(0, 1500) }, { role: 'assistant', content: shown.slice(0, 1500) });
-  if (mem.chat.length > 30) await this._compact(mem).catch(() => {});
-  this.store.save();
+  if (!local) {
+    mem.chat.push({ role: 'user', content: String(text).slice(0, 1500) }, { role: 'assistant', content: shown.slice(0, 1500) });
+    if (mem.chat.length > 30) await this._compact(mem).catch(() => {});
+    this.store.save();
+  }
   const good = changes.filter((c) => !c.error);
   if (good.length) this.pendingW.set(w.id, good); else this.pendingW.delete(w.id);
   return { reply: shown, changes };

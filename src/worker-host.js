@@ -88,8 +88,42 @@ const ASSETS = {
 
 // ---------- env / globals ----------
 const env = { ...dotenv, ...(cfg.env || {}), KV: kv, ASSETS };
+// NOTIFY(message): Worker থেকে বাইরে বার্তা (NOTIFY_URL সেট থাকলে Discord/Slack/Webhook-এ যায়)
+env.NOTIFY = async (message) => { const url = env.NOTIFY_URL; if (!url) return false; try { const r = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ content: String(message), text: String(message) }), signal: AbortSignal.timeout(8000) }); return r.ok; } catch { return false; } };
 for (const [k, v] of Object.entries({ ...dotenv, ...(cfg.env || {}) })) { process.env[k] = v; globalThis[k] = v; }
 globalThis.KV = kv; globalThis.ASSETS = ASSETS; globalThis.env = env;
+
+// ---------- DB: SQLite (Node-এর বিল্ট-ইন node:sqlite), D1-এর মতো API ----------
+// env.DB.prepare(sql).bind(...args).all() / .first() / .run() / .raw(); env.DB.exec(sql); env.DB.batch([...])
+if (cfg.db) {
+  let sqlite = null;
+  try { sqlite = require('node:sqlite'); } catch { /* Node পুরনো, DB বন্ধ */ }
+  if (sqlite && sqlite.DatabaseSync) {
+    const raw = new sqlite.DatabaseSync(cfg.db);
+    try { raw.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;'); } catch { /* ignore */ }
+    const stmt = (sql) => {
+      const st = raw.prepare(String(sql));
+      let args = [];
+      const api = {
+        bind(...a) { args = a; return api; },
+        async all() { const rows = st.all(...args); return { results: rows, success: true, meta: {} }; },
+        async first(col) { const r = st.get(...args) || null; return col && r ? (r[col] ?? null) : r; },
+        async run() { const info = st.run(...args); return { success: true, meta: { changes: Number(info.changes), last_row_id: Number(info.lastInsertRowid) } }; },
+        async raw() { return st.all(...args).map((r) => Object.values(r)); },
+      };
+      return api;
+    };
+    const DBAPI = {
+      prepare: (sql) => stmt(sql),
+      exec: (sql) => { raw.exec(String(sql)); return { count: 1, duration: 0 }; },
+      async batch(list) { const out = []; raw.exec('BEGIN'); try { for (const s of list) out.push(await s.run()); raw.exec('COMMIT'); } catch (e) { raw.exec('ROLLBACK'); throw e; } return out; },
+    };
+    env.DB = DBAPI; globalThis.DB = DBAPI;
+  } else {
+    const msg = 'env.DB পাওয়া যায়নি: Node 22.5+ (node:sqlite) লাগবে';
+    env.DB = null; console.warn(msg);
+  }
+}
 try { process.chdir(cfg.dir); } catch { /* ignore */ }
 
 const listeners = { fetch: [], scheduled: [] };

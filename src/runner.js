@@ -76,6 +76,8 @@ class Runner extends EventEmitter {
       health: bot ? this.health(bot) : 0,
       uptimePct: bot && st ? Math.round(Math.min(100, ((st.upMs + (rt.onlineSince ? Date.now() - rt.onlineSince : 0)) / Math.max(60000, Date.now() - st.since)) * 1000) / 10) : 0,
       strip: (rt.hist || []).join(''),
+      pings: rt.pings || [],
+      quiet: bot && bot.quiet ? bot.quiet : null,
       stats: st ? { ...st, upMs: st.upMs + (rt.onlineSince ? Date.now() - rt.onlineSince : 0) } : null,
     };
   }
@@ -137,7 +139,7 @@ class Runner extends EventEmitter {
 
   autostart() {
     let i = 0;
-    for (const b of this.store.data.bots) if (b.desired) setTimeout(() => this.start(b.id), 2500 * i++);
+    for (const b of this.store.data.bots) if (b.desired && !this.quietMs(b)) setTimeout(() => this.start(b.id), 2500 * i++);
   }
 
   // ---------- internals ----------
@@ -278,13 +280,36 @@ class Runner extends EventEmitter {
           this._emit('offline', bot, { reason: rt.lastReason, nextIn: 8 });
         }
       }
-    } else if (m.t === 'info') rt.info = m.info;
+    } else if (m.t === 'info') {
+      rt.info = m.info;
+      if (m.info && Number.isFinite(m.info.ping)) { rt.pings ||= []; rt.pings.push(m.info.ping); if (rt.pings.length > 60) rt.pings.shift(); }
+    } else if (m.t === 'relay') this._relay(m);
     else if (m.t === 'gchat') { rt.chat.push({ t: Date.now(), text: String(m.text || '').slice(0, 300) }); if (rt.chat.length > 100) rt.chat.shift(); }
     else if (m.t === 'kick') { rt.lastKick = m.reason; this._log(rt, 'kicked: ' + m.reason); this._ev(rt, 'kick', m.reason); }
     else if (m.t === 'error') { rt.lastErr = m.message; this._log(rt, '! ' + m.message); }
   }
 
   // রিকানেক্ট বিলম্ব: এক্সপোনেনশিয়াল + জিটার; স্থায়ী কারণে (ব্যান, ভার্সন, স্ক্রিপ্ট ত্রুটি) ধীর গতি
+  // শান্ত সময় (quiet hours): এই সময়ে বট কানেক্ট করবে না; ফেরত দেয় বাকি মিলিসেকেন্ড
+  quietMs(bot, now = Date.now()) {
+    const q = bot && bot.quiet; if (!q || q.from === q.to) return 0;
+    const local = new Date(now + (Number(this.store.setting('tzOffset', 0)) || 0) * 60000);
+    const h = local.getUTCHours() + local.getUTCMinutes() / 60;
+    const inside = q.from < q.to ? (h >= q.from && h < q.to) : (h >= q.from || h < q.to);
+    if (!inside) return 0;
+    let end = q.to - h; if (end <= 0) end += 24;
+    return Math.round(end * 3600000);
+  }
+
+  // বট-টু-বট: একটি বট চ্যাটে "relay:<নাম>|মেসেজ" লিখলে অন্য বটে যায়
+  _relay(m) {
+    const to = String(m.to || '').toLowerCase();
+    const target = this.store.data.bots.find((b) => b.username.toLowerCase() === to);
+    if (!target) return;
+    const ok = this.say(target.id, String(m.text || '').slice(0, 250));
+    this.emit('relay', { to: target.username, ok, text: String(m.text || '').slice(0, 120) });
+  }
+
   _delay(attempts, diag) {
     const base = diag && diag.slow ? 60000 : 5000;
     const cap = diag && diag.slow ? 300000 : 120000;
@@ -308,7 +333,9 @@ class Runner extends EventEmitter {
     const diag = diagnose(rt.lastReason);
     if (diag) st.reasons[diag.key] = (st.reasons[diag.key] || 0) + 1;
 
-    const delay = this._delay(rt.attempts, diag);
+    const qd = this.quietMs(bot);
+    const delay = qd > 0 ? qd : this._delay(rt.attempts, diag);
+    if (qd > 0) this._log(rt, 'শান্ত সময়: পরে কানেক্ট হবে');
     rt.state = 'reconnecting';
     rt.nextAt = Date.now() + delay;
     this._log(rt, `${Math.round(delay / 1000)} সেকেন্ড পরে আবার চেষ্টা (#${rt.attempts}): ${rt.lastReason}`.slice(0, 300));

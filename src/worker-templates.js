@@ -146,4 +146,38 @@ main{padding:32px 40px;border-radius:20px;background:rgba(255,255,255,.07);backd
 ` },
     ],
   },
+
+  {
+    key: 'sqlite-notes', name: 'SQLite নোট অ্যাপ (env.DB)', desc: 'স্থায়ী ডাটাবেস: যোগ, দেখা, মোছা (D1-এর মতো API)',
+    code: `// env.DB = বিল্ট-ইন SQLite (Node 22.5+)। ডাটা ডিস্কে স্থায়ী থাকে।
+const json = (d, s = 200) => new Response(JSON.stringify(d, null, 2), { status: s, headers: { 'content-type': 'application/json; charset=utf-8' } });
+
+async function init(env) {
+  await env.DB.exec('CREATE TABLE IF NOT EXISTS notes (id INTEGER PRIMARY KEY AUTOINCREMENT, text TEXT NOT NULL, created INTEGER NOT NULL)');
+}
+
+export default {
+  async fetch(request, env) {
+    await init(env);
+    const url = new URL(request.url);
+    if (url.pathname === '/notes' && request.method === 'GET') {
+      const rows = await env.DB.prepare('SELECT id, text, created FROM notes ORDER BY id DESC LIMIT 50').all();
+      return json(rows.results);
+    }
+    if (url.pathname === '/notes' && request.method === 'POST') {
+      const body = await request.json().catch(() => null);
+      if (!body || !body.text) return json({ ok: false, error: 'text দিন' }, 400);
+      const r = await env.DB.prepare('INSERT INTO notes (text, created) VALUES (?, ?)').bind(String(body.text).slice(0, 500), Date.now()).run();
+      return json({ ok: true, id: r.meta.last_row_id }, 201);
+    }
+    const m = url.pathname.match(/^\\/notes\\/(\\d+)$/);
+    if (m && request.method === 'DELETE') {
+      const r = await env.DB.prepare('DELETE FROM notes WHERE id = ?').bind(Number(m[1])).run();
+      return json({ ok: r.meta.changes > 0 });
+    }
+    return json({ ok: true, routes: ['GET /notes', 'POST /notes {"text":"..."}', 'DELETE /notes/:id'] });
+  },
+};
+`,
+  },
 ];
