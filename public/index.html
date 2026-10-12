@@ -417,8 +417,8 @@ function vDash() {
   const budget = Math.max(1, S.host.limits.mc * 192), memPct = Math.min(100, Math.round(f.mem / budget * 100)), slotPct = Math.round(bots.length / S.host.limits.mc * 100);
   const feed = (S.feed || []).slice(0, 9);
   return `<div class="g p tilt" style="margin-bottom:16px;display:flex;align-items:center;gap:20px;flex-wrap:wrap;background:linear-gradient(135deg,rgba(124,92,255,.22),rgba(39,211,255,.1))">
-    <div style="flex:1;min-width:220px"><div class="dim">${greet}</div><div style="font-size:26px;font-weight:700;margin:2px 0">${f.online ? `${f.online}টি বট অনলাইন` : bots.length ? 'কোনো বট অনলাইন নেই' : 'শুরু করা যাক'}</div><div class="mut" id="clk">${new Date().toLocaleTimeString('bn-BD')}</div></div>
-    <div class="row wrap"><button class="btn ok" data-bulk="start">${ic('play')}সব চালু</button><button class="btn" data-bulk="restart">${ic('redo')}সব রিস্টার্ট</button><button class="btn bad" data-bulk="stop">${ic('stop')}সব বন্ধ</button><button class="btn pri" data-new>${ic('plus')}নতুন বট</button></div></div>
+    <div style="flex:1;min-width:220px"><div class="dim">${greet}</div><div style="font-size:26px;font-weight:700;margin:2px 0">${f.online ? `${f.online}টি বট অনলাইন` : bots.length ? 'কোনো বট অনলাইন নেই' : 'শুরু করা যাক'}</div><div class="mut" id="clk">${new Date().toLocaleTimeString('bn-BD')}</div><div class="mut">Workers ${S.workers ? S.workers.running : 0}/${S.workers ? S.workers.count : 0} চালু · দ্রুত কাজ: Ctrl+K</div></div>
+    <div style="text-align:center">${ringSvg(avg)}<div class="dim" style="margin-top:4px">গড় স্বাস্থ্য</div></div><div class="row wrap"><button class="btn ok" data-bulk="start">${ic('play')}সব চালু</button><button class="btn" data-bulk="restart">${ic('redo')}সব রিস্টার্ট</button><button class="btn bad" data-bulk="stop">${ic('stop')}সব বন্ধ</button><button class="btn pri" data-new>${ic('plus')}নতুন বট</button></div></div>
   <div class="grid g4">
     ${tile('অনলাইন বট', `${f.online}<span style="font-size:18px;opacity:.6">/${f.total}</span>`, 'এখন চলমান', 'bot', 'var(--ok)')}
     ${tile('গড় স্বাস্থ্য', avg, '১০০ এর মধ্যে', 'shield', 'var(--a1)')}
@@ -452,6 +452,7 @@ function botCard(b) {
     <div class="chips">
       ${s.state === 'online' ? `<span class="chip">${ic('clock')}${fmt(Date.now() - s.onlineSince)}</span>${s.info && s.info.ping != null ? `<span class="chip">${ic('pulse')}${s.info.ping}ms</span>` : ''}${s.info && s.info.players != null ? `<span class="chip">${ic('bot')}${s.info.players}</span>` : ''}` : ''}
       ${s.state === 'reconnecting' ? `<span class="chip">${ic('redo')}${s.nextIn}সে পরে</span>` : ''}
+      ${s.uptimePct != null ? `<span class="chip">${ic('shield')}আপটাইম ${s.uptimePct}%</span>` : ''}
       ${s.diag && s.state !== 'online' ? `<span class="chip" style="color:var(--warn)">${ic('warn')}${esc(s.diag.title)}</span>` : ''}
     </div>
     <div class="row" style="margin-top:14px" onclick="event.stopPropagation()">
@@ -549,6 +550,7 @@ function vSet() {
   <div class="g p"><div class="h3">ব্যাকআপ</div><div class="row wrap"><a class="btn" href="/api/backup" download>${ic('down')}ব্যাকআপ নামান</a><button class="btn" id="rst">${ic('up')}রিস্টোর</button><input type="file" id="rstf" accept="application/json" class="hide"></div><div class="dim" style="margin-top:10px">বট, স্ক্রিপ্ট, AI মেমরি ও সেটিংস থাকে। রিস্টোরের পর বটগুলো বন্ধ অবস্থায় আসে।</div></div>
   </div>
   <div class="grid g2" style="margin-top:16px"><div class="g p"><div class="h3">টাইমজোন (রিপোর্ট ও "আজ" গণনার জন্য)</div><div class="row wrap"><span class="pill">${S.settings && S.settings.tzOffset != null ? 'UTC' + (S.settings.tzOffset >= 0 ? '+' : '') + (S.settings.tzOffset / 60) : 'সেট নেই'}</span><button class="btn sm" id="tz-sync">${ic('clock')}ব্রাউজারের সাথে মেলান</button></div><div class="dim" style="margin-top:8px">টেলিগ্রামের দৈনিক রিপোর্ট ও বিশ্লেষণ এই টাইমজোন ব্যবহার করে।</div></div>
+  <div class="g p"><div class="h3">পাবলিক স্ট্যাটাস পেজ</div><div class="row"><div style="flex:1"><b>স্ট্যাটাস পেজ চালু</b><div class="dim">লগইন ছাড়া দেখা যাবে: বট ও Worker-এর অবস্থা ও সফলতার হার। কোনো ফাইল বা ENV দেখায় না।</div></div><div class="sw ${S.settings && S.settings.statusPublic ? 'on' : ''}" id="st-sw"></div></div>${S.settings && S.settings.statusPublic ? `<div class="row wrap" style="margin-top:10px"><span class="mono dim">${esc(location.origin)}/status</span><button class="btn sm" id="st-open">${ic('ext')}খুলুন</button></div>` : ''}</div>
   <div class="g p"><div class="h3">অডিট লগ (সাম্প্রতিক কার্যক্রম)</div><div id="audit" class="scr" style="max-height:260px;overflow:auto">লোড হচ্ছে...</div></div></div>`;
 }
 
@@ -624,6 +626,8 @@ function bindAi() {
 
 function bindSet() {
   bindTheme(); loadAudit();
+  const stsw = $('#st-sw'); if (stsw) stsw.onclick = async () => { await act('/settings', 'PUT', { statusPublic: !(S.settings && S.settings.statusPublic) }, 'সেটিং সেভ হয়েছে'); render(true); };
+  const sto = $('#st-open'); if (sto) sto.onclick = () => window.open('/status', '_blank');
   const tzb = $('#tz-sync'); if (tzb) tzb.onclick = async () => { await api('/settings', 'PUT', { tzOffset: -new Date().getTimezoneOffset() }); toast('টাইমজোন সেট হয়েছে', 'ok'); await refresh(); render(true); };
   const load = async () => { const r = await api('/ai/models'); if (!r.ok) return toast(r.error, 'bad'); $('#m').innerHTML = r.models.map((m) => `<option ${m === r.current ? 'selected' : ''}>${esc(m)}</option>`).join(''); toast(r.models.length + 'টি মডেল পাওয়া গেছে', 'ok'); };
   $('#mload').onclick = load;
@@ -722,12 +726,16 @@ function wkPaint() {
   const w = W.id && W.list.find((x) => x.id === W.id);
   if (!w) { el.innerHTML = wkListHtml(); wkBindList(); return; }
   const pill = $('#wk-pill'); if (pill) pill.innerHTML = wkPill(w);
-  if (W.tab === 'overview') { el.dataset.tab = 'overview'; el.innerHTML = wkOverview(w); return; }
+  if (W.tab === 'overview') { el.dataset.tab = 'overview'; el.innerHTML = wkOverview(w); bindWkCsv(w); return; }
   if (el.dataset.tab === W.tab) return;
   el.dataset.tab = W.tab;
   ({ files: wkFilesTab, settings: wkSettingsTab, versions: wkVersTab, ai: wkAiTab, logs: wkLogsTab, test: wkTestTab })[W.tab](w, el);
 }
 
+async function bindWkCsv(w) {
+  const c = $('#wk-csv'); if (!c) return;
+  c.onclick = async () => { try { saveBlob(await apiBlob(`/workers/${w.id}/stats.csv?tz=${tzo()}`), w.slug + '-daily.csv'); toast('CSV ডাউনলোড শুরু', 'ok'); } catch (e) { toast(e.message, 'bad'); } };
+}
 function wkCharts(a) { return `<div class="grid g2" style="margin-top:16px"><div class="g p"><div class="h3">রিকোয়েস্ট: গত ২৪ ঘণ্টা</div>${bars(hoursItems(a), '#7c5cff')}</div><div class="g p"><div class="h3">রিকোয়েস্ট: গত ১৪ দিন</div>${bars(daysItems(a), '#27d3ff')}</div></div>`; }
 function wkListHtml() {
   const a = W.agg; if (!a) return '';
@@ -740,7 +748,7 @@ function wkCard(w) {
   const t = w.agg.today;
   return `<div class="g bc tilt" data-wk="${w.id}"><div class="row"><div style="flex:1;min-width:0"><div class="nm">${esc(w.name)}</div><div class="addr" style="overflow:hidden;text-overflow:ellipsis">/w/${esc(w.slug)}</div><div style="margin-top:8px">${wkPill(w)}</div></div><div style="text-align:right"><div style="font-size:26px;font-weight:700">${nf(t.req)}</div><div class="dim">আজ</div></div></div>
   <div style="margin-top:12px">${bars(hoursItems(w.agg, true), '#7c5cff', 70, true)}</div>
-  <div class="chips"><span class="chip">${ic('warn')}${nf(t.err)} ত্রুটি</span><span class="chip">${ic('clock')}${avgMs(t)} ms</span>${w.envCount ? `<span class="chip">${ic('key')}${w.envCount} ENV</span>` : ''}</div>
+  <div class="chips"><span class="chip">${ic('check')}সফলতা ${t.req ? (100 - t.err / t.req * 100).toFixed(1) : '100.0'}%</span><span class="chip">${ic('warn')}${nf(t.err)} ত্রুটি</span><span class="chip">${ic('clock')}${avgMs(t)} ms</span>${w.envCount ? `<span class="chip">${ic('key')}${w.envCount} ENV</span>` : ''}</div>
   ${w.state === 'error' ? `<div class="dim" style="color:var(--bad);margin-top:8px">${esc(String(w.error).split('\n')[0].slice(0, 110))}</div>` : ''}
   <div class="row" style="margin-top:12px" onclick="event.stopPropagation()"><button class="btn sm" data-copyu="${esc(wkUrl(w))}">${ic('copy')}URL</button>${w.enabled ? `<button class="btn bad sm" data-wkact="stop" data-id="${w.id}">${ic('stop')}বন্ধ</button>` : `<button class="btn ok sm" data-wkact="start" data-id="${w.id}">${ic('play')}চালু</button>`}</div></div>`;
 }
@@ -773,7 +781,7 @@ function wkOverview(w) {
   const lt = Math.max(1, (x.lhist || []).reduce((p, q) => p + q, 0)), ln = ['<10ms', '<25ms', '<50ms', '<100ms', '<250ms', '<1সে', '≥1সে'];
   const uaT = Math.max(1, Object.values(x.ua || {}).reduce((p, q) => p + q, 0)), mT = Math.max(1, Object.values(x.methods || {}).reduce((p, q) => p + q, 0));
   const inv = a.inv || { ok: 0, exc: 0, tmo: 0 };
-  return `<div class="grid g4">${tile('আজকের রিকোয়েস্ট', nf(a.today.req), `গতকাল ${nf(a.yesterday.req)} · ৭ দিনে ${nf(a.d7.req)}`, 'pulse', 'var(--ok)')}${tile('আজকের ত্রুটি (5xx)', nf(a.today.err), a.today.req ? (a.today.err / a.today.req * 100).toFixed(1) + '% ত্রুটি হার' : '--', 'warn', 'var(--bad)')}${tile('গড় লেটেন্সি', avgMs(a.today) + ' ms', `p50 ${s.lat.p50} · p95 ${s.lat.p95} · p99 ${s.lat.p99 || 0}`, 'clock', 'var(--a2)')}${tile('মোট রিকোয়েস্ট', nf(a.total), `৩০ দিনে ${nf(a.d30.req)}`, 'bolt', 'var(--a1)')}</div>
+  return `<div class="row" style="justify-content:flex-end;margin-bottom:10px"><button class="btn sm" id="wk-csv">${ic('down')}দৈনিক CSV (৩০ দিন)</button></div><div class="grid g4">${tile('আজকের রিকোয়েস্ট', nf(a.today.req), `গতকাল ${nf(a.yesterday.req)} · ৭ দিনে ${nf(a.d7.req)}`, 'pulse', 'var(--ok)')}${tile('আজকের ত্রুটি (5xx)', nf(a.today.err), a.today.req ? (a.today.err / a.today.req * 100).toFixed(1) + '% ত্রুটি হার' : '--', 'warn', 'var(--bad)')}${tile('গড় লেটেন্সি', avgMs(a.today) + ' ms', `p50 ${s.lat.p50} · p95 ${s.lat.p95} · p99 ${s.lat.p99 || 0}`, 'clock', 'var(--a2)')}${tile('মোট রিকোয়েস্ট', nf(a.total), `৩০ দিনে ${nf(a.d30.req)}`, 'bolt', 'var(--a1)')}</div>
   <div class="grid g4" style="margin-top:16px">${tile('ডাটা ট্রান্সফার (আজ)', fmtSize(a.today.bytes || 0), `৩০ দিনে ${fmtSize(a.d30.bytes || 0)}`, 'cloud', 'var(--a3)')}${tile('গড় CPU সময়', (a.today.req ? Math.round((a.today.cpu || 0) / a.today.req * 10) / 10 : 0) + ' ms', 'প্রতি রিকোয়েস্ট (আজ)', 'chip', 'var(--a1)')}${tile('ত্রুটির ধরন (৩০ দিন)', nf(inv.exc + inv.tmo), `exception ${inv.exc} · টাইমআউট ${inv.tmo}`, 'warn', 'var(--warn)')}${tile('প্রজেক্ট', `${w.fileCount} <span style="font-size:16px;opacity:.6">ফাইল</span>`, `${fmtSize(w.totalSize || 0)} · KV ${w.kvKeys} · ENV ${w.envCount}`, 'folder', 'var(--ok)')}</div>
   ${w.state === 'error' ? `<div class="g p" style="margin-top:16px;border-color:rgba(255,90,115,.5)"><b style="color:var(--bad)">Worker ত্রুটিতে আছে</b><pre class="mono" style="white-space:pre-wrap;margin:8px 0 0;font-size:12px">${esc(w.error)}</pre></div>` : ''}
   ${wkCharts(a)}
@@ -1171,10 +1179,17 @@ $('#lg-feat').innerHTML = [['pulse', 'লাইভ ড্যাশবোর্�
 /* ---------- command palette ---------- */
 function openPalette() {
   if (!S) return;
+  S.wlist = W.list && W.list.length ? W.list : (S.wlist || []);
   const items = [...NAV.map(([k, i, t]) => ({ t: t + ' পেজ', i, f: () => go(k) })),
     ...S.bots.map((b) => ({ t: 'বট: ' + b.username, i: 'bot', f: () => go('bots', b.id) })),
     { t: 'নতুন বট তৈরি', i: 'plus', f: newBot }, { t: 'সব বট চালু', i: 'play', f: () => act('/bulk/start', 'POST', null, 'সম্পন্ন') },
     { t: 'সব বট রিস্টার্ট', i: 'redo', f: () => act('/bulk/restart', 'POST', null, 'সম্পন্ন') },
+    ...((S.wlist || [])).map((w) => ({ t: 'Worker: ' + w.name, i: 'cloud', f: () => go('workers', w.id) })),
+    { t: 'নতুন Worker তৈরি', i: 'plus', f: () => { go('workers'); setTimeout(wkNew, 60); } },
+    { t: 'সব বট বন্ধ', i: 'stop', f: () => act('/bulk/stop', 'POST', null, 'সব বট বন্ধ হয়েছে') },
+    { t: 'থিম: অরোরা', i: 'sun', f: () => setAccent('aurora') }, { t: 'থিম: সানসেট', i: 'sun', f: () => setAccent('sunset') },
+    { t: 'থিম: মহাসাগর', i: 'sun', f: () => setAccent('ocean') }, { t: 'থিম: পান্না', i: 'sun', f: () => setAccent('emerald') },
+    ...(S.settings && S.settings.statusPublic ? [{ t: 'পাবলিক স্ট্যাটাস পেজ খুলুন', i: 'globe', f: () => window.open('/status', '_blank') }] : []),
     { t: 'থিম বদলান', i: 'sun', f: () => $('#theme').click() }, { t: 'লগআউট', i: 'out', f: () => $('#out').click() }];
   const o = modal(`<div class="row" style="margin-bottom:10px">${ic('search')}<input class="in" id="pq" placeholder="খুঁজুন বা কাজ বাছুন..." autocomplete="off"></div><div class="col scr" id="pl" style="gap:4px;max-height:50vh;overflow:auto"></div>`);
   let idx = 0, cur = items;

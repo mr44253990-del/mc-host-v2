@@ -94,6 +94,31 @@ const fail = (res, error, code = 400) => res.status(code).json({ ok: false, erro
   app.use((req, res, next) => (req.path === '/api/restore' ? next() : jsonParser(req, res, next)));
   app.get('/healthz', (req, res) => res.type('text').send('ok'));
 
+  // পাবলিক স্ট্যাটাস পেজ (লগইন ছাড়া, শুধু সুইচ চালু থাকলে; কোনো ফাইল/ENV/লগ দেখায় না)
+  const esc2 = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  app.get('/status', (req, res) => {
+    if (!store.setting('statusPublic', false)) return res.status(404).type('text').send('Not found');
+    const bots = store.data.bots.map((b) => { const sn = runner.snapshot(b.id); return { name: b.username, state: sn.state, up: sn.uptimePct || 0 }; });
+    const wks = workers.all().map((w) => { const v = workers.view(w); const a = workers.agg([w.id], 0); const ok = a.d30.req ? Math.round((1 - a.d30.err / a.d30.req) * 1000) / 10 : 100; return { name: w.name, state: v.state === 'running' ? 'online' : v.state === 'error' ? 'error' : 'stopped', ok, p95: workers.latency(w.id).p95 }; });
+    const lab = { online: 'চালু', starting: 'চালু হচ্ছে', reconnecting: 'পুনরায় চেষ্টা', stopped: 'বন্ধ', error: 'সমস্যা' };
+    const col = { online: '#35e6a0', starting: '#ffb94a', reconnecting: '#ff8a4a', stopped: '#6a7099', error: '#ff5a73' };
+    const row = (n, st, sub) => `<div class="r"><span class="dot" style="background:${col[st] || '#6a7099'}"></span><b>${esc2(n)}</b><span class="sub">${sub}</span><span class="pill">${lab[st] || esc2(st)}</span></div>`;
+    const allOk = bots.every((b) => b.state === 'online' || b.state === 'stopped') && wks.every((w) => w.state !== 'error');
+    const html = `<!DOCTYPE html><html lang="bn"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>স্ট্যাটাস</title><style>
+    body{margin:0;min-height:100vh;font-family:system-ui,'Noto Sans Bengali',sans-serif;background:radial-gradient(900px 500px at 10% -10%,rgba(124,92,255,.35),transparent 70%),radial-gradient(800px 500px at 110% 10%,rgba(39,211,255,.25),transparent 70%),#070914;color:#eef1ff;padding:28px 18px}
+    main{max-width:760px;margin:0 auto}h1{font-size:22px;margin:0 0 4px}.hero{padding:20px 22px;border-radius:22px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);backdrop-filter:blur(20px);margin-bottom:18px}
+    .ok{color:#35e6a0}.bad{color:#ff5a73}.card{padding:16px 18px;border-radius:20px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);margin-bottom:14px}
+    h2{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:#8d95c0;margin:0 0 10px}.r{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid rgba(255,255,255,.07)}.r:last-child{border:0}
+    .dot{width:9px;height:9px;border-radius:50%;flex:none}.sub{margin-left:auto;color:#8d95c0;font-size:13px}.pill{font-size:12px;padding:3px 10px;border-radius:20px;border:1px solid rgba(255,255,255,.14);color:#c9cff0}
+    .foot{color:#6a7099;font-size:12px;text-align:center;margin-top:18px}</style></head><body><main>
+    <div class="hero"><h1>MC Host স্ট্যাটাস</h1><div class="${allOk ? 'ok' : 'bad'}">${allOk ? '● সব সেবা স্বাভাবিক' : '● কিছু সেবায় সমস্যা'}</div><div class="foot" style="text-align:left;margin:8px 0 0">সর্বশেষ হালনাগাদ: ${new Date().toISOString().slice(0, 16).replace('T', ' ')} UTC</div></div>
+    <div class="card"><h2>বট</h2>${bots.map((b) => row(b.name, b.state, 'আপটাইম ' + b.up + '%')).join('') || '<div class="sub">কোনো বট নেই</div>'}</div>
+    <div class="card"><h2>Workers</h2>${wks.map((w) => row(w.name, w.state, 'সফলতা ' + w.ok + '% · p95 ' + w.p95 + 'ms')).join('') || '<div class="sub">কোনো Worker নেই</div>'}</div>
+    <div class="foot">এই পেজে কোনো ব্যক্তিগত তথ্য, ফাইল বা ENV দেখানো হয় না।</div></main></body></html>`;
+    res.setHeader('Cache-Control', 'no-store');
+    res.type('html').send(html);
+  });
+
   // ---------- auth ----------
   app.get('/api/login-info', (req, res) => {
     const t = tries.get(req.ip);
@@ -140,7 +165,7 @@ const fail = (res, error, code = 400) => res.status(code).json({ ok: false, erro
       workers: { count: workers.all().length, running: workers.all().filter((w) => workers.view(w).state === 'running').length },
       host: { port: PORT, mode: store.mode, node: process.version, uptime: Date.now() - started, rss: Math.round(process.memoryUsage().rss / 1048576), cpus: os.cpus().length, limits: { mc: MAX_MC, tg: MAX_TG }, platform: process.env.RENDER ? 'Render' : process.env.SERVER_PORT ? 'Wispbyte / Pterodactyl' : 'Generic' },
       history: store.data.history.slice(-90),
-      settings: { tzOffset: store.setting('tzOffset', null), digestHour: store.setting('digestHour', -1), muteUntil: store.setting('muteUntil', 0), notifyBots: store.setting('notifyBots', true), notifyWorkers: store.setting('notifyWorkers', true) },
+      settings: { statusPublic: !!store.setting('statusPublic', false), tzOffset: store.setting('tzOffset', null), digestHour: store.setting('digestHour', -1), muteUntil: store.setting('muteUntil', 0), notifyBots: store.setting('notifyBots', true), notifyWorkers: store.setting('notifyWorkers', true) },
     });
   });
 
@@ -324,6 +349,7 @@ const fail = (res, error, code = 400) => res.status(code).json({ ok: false, erro
     if (b.muteUntil !== undefined) store.setSetting('muteUntil', Number(b.muteUntil) || 0);
     if (typeof b.notifyBots === 'boolean') store.setSetting('notifyBots', b.notifyBots);
     if (typeof b.notifyWorkers === 'boolean') store.setSetting('notifyWorkers', b.notifyWorkers);
+    if (typeof b.statusPublic === 'boolean') store.setSetting('statusPublic', b.statusPublic);
     ok(res);
   });
 
@@ -364,6 +390,7 @@ const fail = (res, error, code = 400) => res.status(code).json({ ok: false, erro
   }));
   app.post('/api/workers/:id/clone', withWk(async (w, req, res) => { const c = workers.clone(w.id, (req.body || {}).name); ok(res, { id: c.id }); }));
   app.get('/api/workers/:id/stats', withWk((w, req, res) => ok(res, { agg: workers.agg([w.id], tzOf(req)), lat: workers.latency(w.id), recent: workers.recent(w.id), extra: workers.extra(w.id), w: workers.view(w) })));
+  app.get('/api/workers/:id/stats.csv', withWk((w, req, res) => { res.setHeader('Content-Type', 'text/csv; charset=utf-8'); res.setHeader('Content-Disposition', `attachment; filename="${w.slug}-daily.csv"`); res.end(workers.csv(w.id, tzOf(req))); }));
   app.get('/api/workers/:id/logs', withWk((w, req, res) => ok(res, { logs: workers.logs(w.id), w: workers.view(w) })));
 
   // ফাইল ম্যানেজার

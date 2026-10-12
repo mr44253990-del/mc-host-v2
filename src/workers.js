@@ -568,6 +568,27 @@ class Workers extends EventEmitter {
     }
   }
 
+
+  // দৈনিক সারাংশ (সর্বশেষ ৩০ দিন), CSV-র জন্য। tzMin = getTimezoneOffset()
+  dailyRows(id, tzMin = 0) {
+    const off = -Number(tzMin || 0) * 60000, day = 86400000, now = Date.now();
+    const today = Math.floor((now + off) / day);
+    const map = new Map();
+    for (const [k, a] of Object.entries(this.stats(id).b)) {
+      const t = Number(k) * BUCKET; const di = Math.floor((t + off) / day);
+      if (today - di < 0 || today - di > 29) continue;
+      const r = map.get(di) || { req: 0, ok: 0, err: 0, ms: 0, bytes: 0, cpu: 0, exc: 0, tmo: 0 };
+      r.req += a[0]; r.ms += a[1]; r.ok += a[2] + a[3] + a[4]; r.err += a[5]; r.bytes += a[6] || 0; r.cpu += a[7] || 0; r.exc += a[8] || 0; r.tmo += a[9] || 0;
+      map.set(di, r);
+    }
+    return [...map.entries()].sort((a, b) => a[0] - b[0]).map(([di, r]) => ({ date: new Date(di * day).toISOString().slice(0, 10), ...r, avgMs: r.req ? Math.round(r.ms / r.req) : 0, errRate: r.req ? Math.round(r.err / r.req * 1000) / 10 : 0 }));
+  }
+  csv(id, tzMin = 0) {
+    const head = 'date,requests,ok,errors_5xx,error_rate_pct,avg_ms,bytes,cpu_ms,exceptions,timeouts';
+    const rows = this.dailyRows(id, tzMin).map((r) => [r.date, r.req, r.ok, r.err, r.errRate, r.avgMs, r.bytes, Math.round(r.cpu), r.exc, r.tmo].join(','));
+    return [head, ...rows].join('\n') + '\n';
+  }
+
   totalRequests() { let n = 0; for (const w of this.all()) n += this.stats(w.id).t; return n; }
 
   agg(ids, tzMin = 0) {

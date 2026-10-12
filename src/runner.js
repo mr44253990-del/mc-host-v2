@@ -74,6 +74,7 @@ class Runner extends EventEmitter {
       lastExit: rt.lastExit,
       info: rt.state === 'online' ? rt.info : null,
       health: bot ? this.health(bot) : 0,
+      uptimePct: bot && st ? Math.round(Math.min(100, ((st.upMs + (rt.onlineSince ? Date.now() - rt.onlineSince : 0)) / Math.max(60000, Date.now() - st.since)) * 1000) / 10) : 0,
       strip: (rt.hist || []).join(''),
       stats: st ? { ...st, upMs: st.upMs + (rt.onlineSince ? Date.now() - rt.onlineSince : 0) } : null,
     };
