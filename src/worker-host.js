@@ -88,6 +88,14 @@ const ASSETS = {
 
 // ---------- env / globals ----------
 const env = { ...dotenv, ...(cfg.env || {}), KV: kv, ASSETS };
+// CACHE: মেমরিতে ছোট ক্যাশ (TTL সহ, সর্বোচ্চ ৫০০ এন্ট্রি, LRU)। প্রসেস ঘুমালে ক্যাশ খালি হয়।
+const cacheMap = new Map(); const CACHE_MAX = 500;
+env.CACHE = {
+  async get(k) { const key = String(k); const e = cacheMap.get(key); if (!e) return null; if (e.x && e.x < Date.now()) { cacheMap.delete(key); return null; } cacheMap.delete(key); cacheMap.set(key, e); return e.v; },
+  async put(k, v, o = {}) { const key = String(k); if (!cacheMap.has(key) && cacheMap.size >= CACHE_MAX) cacheMap.delete(cacheMap.keys().next().value); cacheMap.set(key, { v: String(v).slice(0, 200000), x: o.ttl ? Date.now() + Number(o.ttl) * 1000 : 0 }); return true; },
+  async delete(k) { return cacheMap.delete(String(k)); },
+  size() { return cacheMap.size; },
+};
 // NOTIFY(message): Worker থেকে বাইরে বার্তা (NOTIFY_URL সেট থাকলে Discord/Slack/Webhook-এ যায়)
 env.NOTIFY = async (message) => { const url = env.NOTIFY_URL; if (!url) return false; try { const r = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ content: String(message), text: String(message) }), signal: AbortSignal.timeout(8000) }); return r.ok; } catch { return false; } };
 for (const [k, v] of Object.entries({ ...dotenv, ...(cfg.env || {}) })) { process.env[k] = v; globalThis[k] = v; }

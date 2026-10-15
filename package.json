@@ -1,7 +1,7 @@
 {
-  "name": "mc-host",
-  "version": "2.9.0",
-  "description": "Minecraft bot hosting panel with Telegram control and Mistral AI assistant (Wispbyte, Render or any Node host)",
+  "name": "mc-host-workers",
+  "version": "3.0.0",
+  "description": "Workers-only hosting panel: upload, run, monitor and back up Workers (low RAM)",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
@@ -10,8 +10,6 @@
     "node": ">=18"
   },
   "dependencies": {
-    "express": "^4.19.2",
-    "mineflayer": "^4.23.0",
-    "telegraf": "^4.16.3"
+    "express": "^4.19.2"
   }
 }
